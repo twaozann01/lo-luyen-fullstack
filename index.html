@@ -1,0 +1,2058 @@
+<title>Lò Luyện Fullstack</title>
+
+<style>
+  /* ============================================================
+     LÒ LUYỆN — hệ thiết kế
+     Ẩn dụ: phiếu trả lời trắc nghiệm quét máy (OMR).
+     Giấy ngả lạnh · mực bút bi làm accent · dải định vị máy quét ở mép trái.
+     Xanh lá / đỏ CHỈ dành cho đúng–sai, không bao giờ dùng trang trí.
+     ============================================================ */
+  :root {
+    /* nền & mực */
+    --paper:      #f1f3f8;
+    --card:       #ffffff;
+    --sunken:     #eef0f6;
+    --rule:       #d7dce6;
+    --rule-soft:  #e7ebf2;
+    --ink:        #0e1320;
+    --ink-2:      #525c70;
+    --ink-3:      #8a93a5;
+
+    /* accent — mực bút bi */
+    --accent:     #2743c4;
+    --accent-2:   #e1e6fb;
+    --accent-3:   #f1f4fe;
+
+    /* phân biệt phần */
+    --fe:         #2743c4;
+    --be:         #0d6b70;
+
+    /* ngữ nghĩa đúng–sai */
+    --ok:         #0f6b45;
+    --ok-bg:      #dcf1e6;
+    --bad:        #9e241c;
+    --bad-bg:     #fbe2df;
+
+    --sh-1: 0 1px 2px rgba(14, 19, 32, .05);
+    --sh-2: 0 1px 2px rgba(14, 19, 32, .05), 0 8px 24px -14px rgba(14, 19, 32, .3);
+    --sh-3: 0 2px 4px rgba(14, 19, 32, .06), 0 18px 44px -20px rgba(14, 19, 32, .38);
+
+    /* Win11 có Segoe UI Variable (đủ dấu tiếng Việt) và Cascadia Mono. */
+    --display: "Segoe UI Variable Display", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --sans:    "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --mono:    "Cascadia Mono", "Cascadia Code", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --xs:   .6875rem;
+    --sm:   .8125rem;
+    --base: .9375rem;
+    --md:   1.0625rem;
+    --lg:   clamp(1.2rem, 1.02rem + .6vw, 1.45rem);
+    --xl:   clamp(1.55rem, 1.15rem + 1.5vw, 2.1rem);
+
+    --r-sm: 7px;
+    --r:    11px;
+    --r-lg: 16px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:     #0a0d14;
+      --card:      #131720;
+      --sunken:    #191e2a;
+      --rule:      #283040;
+      --rule-soft: #1f2532;
+      --ink:       #e7ebf3;
+      --ink-2:     #98a2b4;
+      --ink-3:     #6a7386;
+      --accent:    #8ba5ff;
+      --accent-2:  #1a2340;
+      --accent-3:  #141a2c;
+      --fe:        #8ba5ff;
+      --be:        #4fc7cd;
+      --ok:        #52d99e;
+      --ok-bg:     #0d2a1f;
+      --bad:       #ff8a7e;
+      --bad-bg:    #2b1512;
+      --sh-1: 0 1px 2px rgba(0,0,0,.5);
+      --sh-2: 0 1px 2px rgba(0,0,0,.5), 0 8px 26px -16px rgba(0,0,0,.9);
+      --sh-3: 0 2px 6px rgba(0,0,0,.55), 0 20px 50px -24px rgba(0,0,0,1);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:     #0a0d14;
+    --card:      #131720;
+    --sunken:    #191e2a;
+    --rule:      #283040;
+    --rule-soft: #1f2532;
+    --ink:       #e7ebf3;
+    --ink-2:     #98a2b4;
+    --ink-3:     #6a7386;
+    --accent:    #8ba5ff;
+    --accent-2:  #1a2340;
+    --accent-3:  #141a2c;
+    --fe:        #8ba5ff;
+    --be:        #4fc7cd;
+    --ok:        #52d99e;
+    --ok-bg:     #0d2a1f;
+    --bad:       #ff8a7e;
+    --bad-bg:    #2b1512;
+    --sh-1: 0 1px 2px rgba(0,0,0,.5);
+    --sh-2: 0 1px 2px rgba(0,0,0,.5), 0 8px 26px -16px rgba(0,0,0,.9);
+    --sh-3: 0 2px 6px rgba(0,0,0,.55), 0 20px 50px -24px rgba(0,0,0,1);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: var(--base);
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+    }
+  }
+
+  /* ============================ đầu trang ============================ */
+  header.top {
+    position: sticky; top: 0; z-index: 30;
+    background: color-mix(in srgb, var(--card) 88%, transparent);
+    backdrop-filter: saturate(160%) blur(12px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .top-in {
+    max-width: 1180px; margin: 0 auto; padding: 15px 22px;
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  }
+  .brand { margin-right: auto; display: flex; flex-direction: column; gap: 1px; }
+  .brand h1 {
+    margin: 0; font-family: var(--display); font-size: var(--lg); font-weight: 700;
+    letter-spacing: -.025em; line-height: 1.1; text-wrap: balance;
+  }
+  .brand .sub {
+    font-family: var(--mono); font-size: var(--xs); color: var(--ink-3);
+    letter-spacing: .14em; text-transform: uppercase;
+  }
+
+  /* thanh tiến độ mảnh dưới header */
+  .bar { height: 2px; background: var(--rule-soft); }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .35s ease; }
+
+  /* ============================ điều khiển ============================ */
+  .ctl { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  .seg {
+    display: inline-flex; background: var(--sunken); border-radius: 9px;
+    padding: 3px; gap: 2px; border: 1px solid var(--rule-soft);
+  }
+  .seg button {
+    font-family: var(--mono); font-size: var(--xs); letter-spacing: .08em;
+    text-transform: uppercase; border: 0; background: transparent; color: var(--ink-2);
+    padding: 7px 13px; border-radius: 6px; cursor: pointer; transition: color .15s, background .15s;
+  }
+  .seg button:hover { color: var(--ink); }
+  .seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: var(--sh-1); }
+
+  .tog {
+    font-family: var(--mono); font-size: var(--xs); letter-spacing: .05em;
+    border: 1px solid var(--rule); background: var(--card); color: var(--ink-2);
+    padding: 8px 13px; border-radius: 9px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: border-color .15s, color .15s, background .15s;
+  }
+  .tog:hover { border-color: var(--ink-3); color: var(--ink); }
+  .tog[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-3); }
+  .tog .dot {
+    width: 8px; height: 8px; border-radius: 50%; flex: none;
+    border: 1.5px solid var(--ink-3); transition: background .15s, border-color .15s;
+  }
+  .tog[aria-pressed="true"] .dot { background: var(--accent); border-color: var(--accent); }
+
+  /* ============================ bố cục ============================ */
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 22px 90px; }
+  .grid { display: grid; grid-template-columns: 148px minmax(0, 1fr); gap: 30px; margin-top: 30px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; gap: 20px; } }
+
+  /* ==================== phiếu trả lời (dải trái) ==================== */
+  .sheet {
+    position: sticky; top: 92px; overflow: hidden;
+    background: var(--card); border: 1px solid var(--rule);
+    border-radius: var(--r); padding: 16px 16px 16px 24px; box-shadow: var(--sh-2);
+  }
+  @media (max-width: 900px) { .sheet { position: static; } }
+
+  /* dải định vị của máy quét — chi tiết thật của phiếu OMR */
+  .sheet::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 8px;
+    background: repeating-linear-gradient(to bottom,
+      var(--ink) 0 9px, transparent 9px 18px);
+    opacity: .7;
+  }
+
+  .sheet h2 {
+    margin: 0 0 12px; font-family: var(--mono); font-size: var(--xs);
+    letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); font-weight: 500;
+  }
+  .bubbles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+  @media (max-width: 900px) { .bubbles { grid-template-columns: repeat(10, 1fr); } }
+  @media (max-width: 560px) { .bubbles { grid-template-columns: repeat(7, 1fr); } }
+
+  .bub {
+    position: relative; aspect-ratio: 1; padding: 0;
+    border: 1.5px solid var(--rule); border-radius: 50%;
+    background: transparent; color: var(--ink-3); cursor: pointer;
+    font-family: var(--mono); font-size: var(--xs); font-variant-numeric: tabular-nums;
+    display: grid; place-items: center;
+    transition: border-color .15s, color .15s, transform .15s;
+  }
+  .bub:hover { border-color: var(--ink-2); color: var(--ink); transform: translateY(-1px); }
+  .bub[data-now="1"] { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 3px var(--accent-3); }
+  .bub[data-res="ok"]  { background: var(--ok);  border-color: var(--ok);  color: var(--card); }
+  .bub[data-res="bad"] { background: var(--bad); border-color: var(--bad); color: var(--card); }
+
+  .tally {
+    margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--rule-soft);
+    display: flex; flex-direction: column; gap: 9px;
+  }
+  .stat { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .stat .k {
+    font-family: var(--mono); font-size: var(--xs); color: var(--ink-3);
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+  .stat .v {
+    font-family: var(--display); font-size: var(--md); font-weight: 700;
+    font-variant-numeric: tabular-nums; letter-spacing: -.02em;
+  }
+  .stat .v.ok { color: var(--ok); }
+  .meter { height: 4px; border-radius: 3px; background: var(--rule-soft); overflow: hidden; }
+  .meter > i { display: block; height: 100%; background: var(--ok); width: 0; transition: width .35s ease; }
+
+  /* ============================ thẻ câu hỏi ============================ */
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .card {
+    position: relative; background: var(--card); border: 1px solid var(--rule);
+    border-radius: var(--r-lg); box-shadow: var(--sh-3); overflow: hidden;
+    animation: rise .22s ease both;
+  }
+  .card + .card { margin-top: 22px; }
+  .card::before {
+    content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
+    background: var(--sec-color, var(--accent));
+  }
+  .card[data-section="fe"] { --sec-color: var(--fe); }
+  .card[data-section="be"] { --sec-color: var(--be); }
+
+  .meta {
+    display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+    padding: 16px 24px 14px; border-bottom: 1px solid var(--rule-soft);
+    font-family: var(--mono); font-size: var(--xs); letter-spacing: .06em;
+  }
+  .qno {
+    font-family: var(--display); font-size: var(--md); font-weight: 700;
+    letter-spacing: -.02em; color: var(--sec-color); font-variant-numeric: tabular-nums;
+    margin-right: 3px;
+  }
+  .chip {
+    border: 1px solid var(--rule); border-radius: 20px; padding: 3px 10px;
+    color: var(--ink-2); background: var(--sunken); white-space: nowrap;
+  }
+  .chip.sec { border-color: var(--sec-color); color: var(--sec-color); background: transparent; }
+  .rule-note {
+    margin-left: auto; color: var(--ink-3); text-transform: uppercase; letter-spacing: .1em;
+  }
+
+  .body { padding: 24px; }
+  .qtext {
+    font-family: var(--display); font-size: var(--md); line-height: 1.5;
+    letter-spacing: -.005em; margin: 0 0 18px; text-wrap: pretty; max-width: 70ch;
+  }
+
+  pre {
+    margin: 0 0 18px; padding: 15px 17px; background: var(--sunken);
+    border: 1px solid var(--rule-soft); border-radius: var(--r);
+    overflow-x: auto; font-family: var(--mono); font-size: var(--sm); line-height: 1.62;
+  }
+  code { font-family: var(--mono); font-size: .92em; }
+  .body p > code, li > code, td > code, .qtext code, summary code {
+    background: var(--sunken); border: 1px solid var(--rule-soft);
+    padding: 1px 5px; border-radius: 4px; white-space: nowrap;
+  }
+
+  /* ============================ đáp án ============================ */
+  .opts { display: flex; flex-direction: column; gap: 9px; list-style: none; margin: 0 0 20px; padding: 0; }
+  .opt {
+    display: flex; gap: 13px; align-items: flex-start; width: 100%; text-align: left;
+    border: 1.5px solid var(--rule); background: var(--card); color: inherit;
+    border-radius: var(--r); padding: 13px 15px; cursor: pointer;
+    font: inherit; line-height: 1.52; transition: border-color .15s, background .15s, transform .12s;
+  }
+  .opt:hover:not(:disabled) { border-color: var(--ink-3); transform: translateX(2px); }
+  .opt:disabled { cursor: default; }
+
+  .opt .mk {
+    position: relative; flex: none; width: 26px; height: 26px;
+    border: 1.5px solid var(--rule); background: var(--paper);
+    display: grid; place-items: center; margin-top: 0;
+    font-family: var(--mono); font-size: var(--xs); color: var(--ink-3);
+    transition: color .15s, border-color .15s;
+  }
+  .opt[data-multi="0"] .mk { border-radius: 50%; }
+  .opt[data-multi="1"] .mk { border-radius: 7px; }
+  .opt .mk::after {
+    content: ""; position: absolute; inset: 2px; border-radius: inherit;
+    background: var(--ink); transform: scale(0); transition: transform .16s cubic-bezier(.3,1.4,.5,1);
+  }
+  .opt[data-multi="1"] .mk::after { border-radius: 4px; }
+  .opt[aria-pressed="true"] .mk { color: var(--card); border-color: var(--ink); }
+  .opt[aria-pressed="true"] .mk::after { transform: scale(1); }
+  .opt[aria-pressed="true"] .mk { z-index: 0; }
+  .opt .mk > span { position: relative; z-index: 1; }
+  .opt[aria-pressed="true"] { border-color: var(--ink-2); background: var(--sunken); }
+
+  .opt[data-mark="hit"]   { border-color: var(--ok);  background: var(--ok-bg); }
+  .opt[data-mark="hit"] .mk  { border-color: var(--ok); color: var(--card); }
+  .opt[data-mark="hit"] .mk::after { background: var(--ok); transform: scale(1); }
+  .opt[data-mark="miss"]  { border-color: var(--bad); background: var(--bad-bg); }
+  .opt[data-mark="miss"] .mk { border-color: var(--bad); color: var(--card); }
+  .opt[data-mark="miss"] .mk::after { background: var(--bad); transform: scale(1); }
+  .opt[data-mark="ought"] { border-color: var(--ok); border-style: dashed; background: transparent; }
+  .opt[data-mark="ought"] .mk { border-color: var(--ok); color: var(--ok); border-style: dashed; }
+  .opt[data-mark="ought"] .mk::after { transform: scale(0); }
+
+  .tail {
+    font-family: var(--mono); font-size: var(--xs); letter-spacing: .1em;
+    text-transform: uppercase; margin-left: auto; flex: none; align-self: center; white-space: nowrap;
+  }
+  .tail[data-t="hit"]   { color: var(--ok); }
+  .tail[data-t="miss"]  { color: var(--bad); }
+  .tail[data-t="ought"] { color: var(--ok); }
+
+  /* ============================ hành động ============================ */
+  .acts { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .btn {
+    font: inherit; font-weight: 600; border-radius: 10px; padding: 10px 20px; cursor: pointer;
+    border: 1px solid transparent; transition: filter .15s, border-color .15s, color .15s;
+  }
+  .btn.pri { background: var(--accent); color: #fff; box-shadow: var(--sh-1); }
+  .btn.pri:hover:not(:disabled) { filter: brightness(1.12); }
+  .btn.pri:disabled { opacity: .38; cursor: not-allowed; }
+  .btn.sec { background: var(--card); border-color: var(--rule); color: var(--ink-2); }
+  .btn.sec:hover:not(:disabled) { border-color: var(--ink-3); color: var(--ink); }
+  .btn.sec:disabled { opacity: .4; cursor: not-allowed; }
+  .hint { font-family: var(--mono); font-size: var(--xs); color: var(--ink-3); margin-left: auto; }
+
+  /* ============================ kết quả ============================ */
+  .verdict {
+    margin-top: 20px; border-radius: var(--r); padding: 14px 18px;
+    display: flex; align-items: center; gap: 12px;
+    font-family: var(--mono); font-size: var(--sm); letter-spacing: .02em;
+    border: 1px solid transparent;
+  }
+  .verdict .sign {
+    flex: none; width: 22px; height: 22px; border-radius: 50%;
+    display: grid; place-items: center; font-weight: 700; font-size: var(--xs);
+  }
+  .verdict[data-v="ok"]  { background: var(--ok-bg);  color: var(--ok);  border-color: var(--ok); }
+  .verdict[data-v="ok"] .sign { background: var(--ok); color: var(--card); }
+  .verdict[data-v="bad"] { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); }
+  .verdict[data-v="bad"] .sign { background: var(--bad); color: var(--card); }
+
+  /* ============================ giải thích ============================ */
+  .why { margin-top: 22px; border-top: 1px solid var(--rule-soft); padding-top: 20px; }
+  .why > h3, .fu > h3 {
+    margin: 0 0 14px; font-family: var(--mono); font-size: var(--xs);
+    letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); font-weight: 500;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .why > h3::after, .fu > h3::after {
+    content: ""; flex: 1; height: 1px; background: var(--rule-soft);
+  }
+  .why h4 {
+    margin: 24px 0 10px; font-family: var(--display); font-size: var(--base);
+    font-weight: 700; letter-spacing: -.01em;
+  }
+  .why h4:first-child { margin-top: 0; }
+  .why p { margin: 0 0 13px; max-width: 68ch; }
+  .why ul, .why ol { margin: 0 0 13px; padding-left: 22px; max-width: 68ch; }
+  .why li { margin-bottom: 7px; }
+  .why li::marker { color: var(--ink-3); }
+
+  .tbl-wrap {
+    overflow-x: auto; margin: 0 0 16px;
+    border: 1px solid var(--rule-soft); border-radius: var(--r);
+  }
+  table { border-collapse: collapse; width: 100%; font-size: var(--sm); min-width: 480px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  th {
+    font-family: var(--mono); font-size: var(--xs); letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-3); font-weight: 500;
+    background: var(--sunken);
+  }
+
+  figure.dg {
+    margin: 0 0 18px; padding: 22px; background: var(--sunken);
+    border: 1px solid var(--rule-soft); border-radius: var(--r); overflow-x: auto;
+  }
+  figure.dg svg { display: block; max-width: 100%; height: auto; margin: 0 auto; color: var(--ink-2); }
+  figure.dg figcaption {
+    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--rule-soft);
+    font-size: var(--sm); color: var(--ink-2); text-align: center;
+    max-width: 62ch; margin-inline: auto; line-height: 1.55;
+  }
+
+  /* khối "câu chốt" — ý cần thuộc, hoặc câu nói mẫu khi phỏng vấn */
+  .script {
+    border: 1px solid var(--accent); background: var(--accent-3);
+    border-radius: var(--r); padding: 15px 18px; margin: 0 0 16px;
+    font-family: var(--display); font-size: var(--md); line-height: 1.55;
+  }
+  .script p { margin: 0 0 10px; max-width: 64ch; }
+  .script p:last-child { margin-bottom: 0; }
+  .script code { font-family: var(--mono); font-size: .82em; background: var(--card); }
+
+  .flag {
+    border-left: 3px solid var(--accent); background: var(--accent-3);
+    padding: 13px 16px; border-radius: 0 var(--r) var(--r) 0; margin: 0 0 16px;
+  }
+  .flag p { margin: 0; max-width: 66ch; }
+
+  /* ============================ câu hỏi phụ ============================ */
+  .fu { margin-top: 24px; border-top: 1px solid var(--rule-soft); padding-top: 20px; }
+  details.fq {
+    border: 1px solid var(--rule); border-radius: var(--r); margin-bottom: 9px;
+    background: var(--card); transition: border-color .15s;
+  }
+  details.fq:hover { border-color: var(--ink-3); }
+  details.fq[open] { border-color: var(--accent); }
+  details.fq summary {
+    cursor: pointer; padding: 13px 16px; font-weight: 600; list-style: none;
+    display: flex; gap: 11px; align-items: flex-start;
+  }
+  details.fq summary::-webkit-details-marker { display: none; }
+  details.fq summary .chev {
+    flex: none; width: 16px; height: 16px; margin-top: 4px;
+    border-right: 1.5px solid var(--accent); border-bottom: 1.5px solid var(--accent);
+    transform: rotate(-45deg) scale(.5); transform-origin: 60% 60%;
+    transition: transform .2s ease;
+  }
+  details.fq[open] summary .chev { transform: rotate(45deg) scale(.5); }
+  details.fq[open] summary { border-bottom: 1px solid var(--rule-soft); }
+  details.fq .ans { padding: 14px 16px 16px 43px; color: var(--ink-2); }
+  details.fq .ans p { margin: 0 0 11px; max-width: 66ch; }
+  details.fq .ans p:last-child, details.fq .ans ul:last-child { margin-bottom: 0; }
+  details.fq .ans ul { margin: 0 0 11px; padding-left: 20px; max-width: 66ch; }
+  details.fq .ans li { margin-bottom: 6px; }
+
+  /* ============================ điều hướng ============================ */
+  .nav { display: flex; gap: 10px; margin-top: 24px; align-items: center; }
+  .nav .spacer {
+    margin-left: auto; font-family: var(--mono); font-size: var(--xs);
+    color: var(--ink-3); font-variant-numeric: tabular-nums; letter-spacing: .08em;
+  }
+
+  /* ============================ hướng dẫn ============================ */
+  .howto { margin-top: 40px; border: 1px dashed var(--rule); border-radius: var(--r-lg); padding: 26px; }
+  .howto h2 {
+    margin: 0 0 8px; font-family: var(--display); font-size: var(--md);
+    font-weight: 700; letter-spacing: -.015em;
+  }
+  .howto > p { margin: 0 0 16px; color: var(--ink-2); max-width: 72ch; }
+  .howto pre { margin-bottom: 0; }
+
+  /* ============================ in ra giấy ============================ */
+  @media print {
+    header.top, .sheet, .nav, .acts, .howto { display: none !important; }
+    body { background: #fff; }
+    .grid { grid-template-columns: 1fr; }
+    .card { box-shadow: none; border-color: #ccc; break-inside: avoid; animation: none; }
+    details.fq[open] { break-inside: avoid; }
+  }
+
+  /* ============================ bộ lọc ============================ */
+  .filters {
+    margin-top: 26px; background: var(--card); border: 1px solid var(--rule);
+    border-radius: var(--r-lg); padding: 18px 20px 14px; box-shadow: var(--sh-2);
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .frow { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
+  .fgrp { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+  .fgrp.grow { flex: 1 1 260px; }
+  .flab {
+    font-family: var(--mono); font-size: var(--xs); letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-3);
+  }
+
+  #qsearch {
+    font: inherit; font-size: var(--sm); color: var(--ink);
+    background: var(--sunken); border: 1px solid var(--rule);
+    border-radius: 9px; padding: 8px 12px; width: 100%; min-width: 0;
+    transition: border-color .15s, background .15s;
+  }
+  #qsearch::placeholder { color: var(--ink-3); }
+  #qsearch:focus { border-color: var(--accent); background: var(--card); outline: none; }
+
+  .chips { display: flex; gap: 7px; flex-wrap: wrap; }
+  .chipf {
+    font-family: var(--mono); font-size: var(--xs); letter-spacing: .03em;
+    border: 1px solid var(--rule); background: var(--card); color: var(--ink-2);
+    padding: 6px 10px; border-radius: 20px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+    transition: border-color .15s, color .15s, background .15s;
+  }
+  .chipf:hover { border-color: var(--ink-3); color: var(--ink); }
+  .chipf[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-3); }
+  .chipf .n {
+    font-variant-numeric: tabular-nums; color: var(--ink-3);
+    background: var(--sunken); border-radius: 10px; padding: 0 6px; font-size: .95em;
+  }
+  .chipf[aria-pressed="true"] .n { background: var(--accent-2); color: var(--accent); }
+  .chips .empty { font-family: var(--mono); font-size: var(--xs); color: var(--ink-3); }
+
+  .fsum {
+    display: flex; align-items: center; gap: 14px;
+    border-top: 1px solid var(--rule-soft); padding-top: 12px;
+    font-family: var(--mono); font-size: var(--xs); color: var(--ink-3);
+    letter-spacing: .06em; font-variant-numeric: tabular-nums;
+  }
+  .lnk {
+    font: inherit; background: none; border: 0; color: var(--accent);
+    cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 3px;
+  }
+  .lnk:hover { filter: brightness(1.15); }
+
+  .stat .v small { font-size: var(--xs); color: var(--ink-3); font-weight: 500; margin-left: 1px; }
+
+  /* ============================ ô chuyển tiến độ ============================ */
+  details.fq.backup { margin-top: 20px; }
+  #dump {
+    width: 100%; font-family: var(--mono); font-size: var(--xs); line-height: 1.5;
+    color: var(--ink); background: var(--sunken); border: 1px solid var(--rule);
+    border-radius: 9px; padding: 10px 12px; resize: vertical;
+  }
+  #dump:focus { border-color: var(--accent); outline: none; }
+  .opt .otext { min-width: 0; }
+</style>
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <h1>Lò Luyện Fullstack</h1>
+      <span class="sub">phiếu trắc nghiệm</span>
+    </div>
+    <div class="ctl">
+      <button type="button" class="tog" id="shufQ" aria-pressed="false">
+        <span class="dot" aria-hidden="true"></span>Đảo câu
+      </button>
+      <button type="button" class="tog" id="shufO" aria-pressed="false">
+        <span class="dot" aria-hidden="true"></span>Đảo đáp án
+      </button>
+      <button type="button" class="tog" id="reveal" aria-pressed="false">
+        <span class="dot" aria-hidden="true"></span>Xem hết
+      </button>
+      <button type="button" class="tog" id="reset">Làm lại</button>
+    </div>
+  </div>
+  <div class="bar"><i id="barfill"></i></div>
+</header>
+
+<div class="wrap">
+
+  <section class="filters" aria-label="Bộ lọc câu hỏi">
+    <div class="frow">
+      <div class="fgrp">
+        <span class="flab">Phần</span>
+        <div class="seg" role="group">
+          <button type="button" data-sec="fe">FE</button>
+          <button type="button" data-sec="be">BE</button>
+          <button type="button" data-sec="all">Tất cả</button>
+        </div>
+      </div>
+
+      <div class="fgrp">
+        <span class="flab">Trạng thái</span>
+        <div class="seg" role="group">
+          <button type="button" data-st="all">Tất cả</button>
+          <button type="button" data-st="todo">Chưa làm</button>
+          <button type="button" data-st="bad">Từng sai</button>
+          <button type="button" data-st="ok">Đã đúng</button>
+        </div>
+      </div>
+
+      <div class="fgrp grow">
+        <span class="flab">Tìm</span>
+        <input type="search" id="qsearch" placeholder="từ khoá trong câu hỏi hoặc chủ đề…" autocomplete="off">
+      </div>
+    </div>
+
+    <div class="frow">
+      <div class="fgrp grow">
+        <span class="flab">Chủ đề</span>
+        <div class="chips" id="topicChips"></div>
+      </div>
+      <div class="fgrp">
+        <span class="flab">Mức</span>
+        <div class="chips" id="levelChips"></div>
+      </div>
+    </div>
+
+    <div class="fsum">
+      <span id="fcount"></span>
+      <button type="button" class="lnk" id="clearF" hidden>Xoá bộ lọc</button>
+    </div>
+  </section>
+
+  <div class="grid">
+    <aside class="sheet">
+      <h2>Phiếu</h2>
+      <div class="bubbles" id="rail"></div>
+      <div class="tally" id="tally"></div>
+    </aside>
+
+    <main id="stage"></main>
+  </div>
+
+  <section class="howto">
+    <h2>Thêm câu hỏi mới</h2>
+    <p>
+      Trang này đọc từ mảng <code>BANK</code> ngay trong file. Thêm câu = nối một object vào mảng đó,
+      không phải sửa gì khác. Chủ đề và mức độ tự xuất hiện trong bộ lọc, không cần khai riêng.
+      Muốn mở phần mới (SQL, DevOps, System Design) thì thêm khoá vào <code>SECTIONS</code>.
+    </p>
+    <pre><code>{
+  id: 'fe-09',                  // duy nhất, dùng làm khoá lưu tiến độ
+  section: 'fe',                // khoá trong SECTIONS
+  topic: 'React core',          // tự gom thành bộ lọc chủ đề
+  level: 'trung bình',          // dễ | trung bình | khó
+  multi: false,                 // true = nhiều đáp án đúng
+  q: 'Nội dung câu hỏi (cho phép thẻ HTML)',
+  code: 'đoạn mã kèm theo — bỏ trống nếu không cần',
+  options: [
+    { id: 'a', text: '...' },
+    { id: 'b', text: '...' },
+  ],
+  correct: ['b'],               // mảng id đáp án đúng
+  why: `HTML giải thích — dùng &lt;figure class="dg"&gt; cho sơ đồ`,
+  followups: [
+    { q: 'Câu hỏi phụ hay bị hỏi tiếp', a: 'HTML câu trả lời' },
+  ],
+}</code></pre>
+
+    <details class="fq backup">
+      <summary><span class="chev" aria-hidden="true"></span>Chuyển tiến độ sang máy khác</summary>
+      <div class="ans">
+        <p>Tiến độ lưu trong trình duyệt của từng máy. Muốn mang sang máy khác thì chép chuỗi dưới đây và dán vào ô tương ứng ở máy kia.</p>
+        <textarea id="dump" rows="3" spellcheck="false" aria-label="Chuỗi tiến độ"></textarea>
+        <div class="acts" style="margin-top:10px">
+          <button type="button" class="btn sec" id="doExport">Lấy chuỗi</button>
+          <button type="button" class="btn sec" id="doImport">Nạp chuỗi</button>
+          <span class="hint" id="ioMsg"></span>
+        </div>
+      </div>
+    </details>
+  </section>
+</div>
+
+<script>
+/* ============================================================
+   NGÂN HÀNG CÂU HỎI
+   Thêm câu mới: nối object vào BANK. Schema xem cuối trang.
+   ============================================================ */
+
+const SECTIONS = { fe: 'Front-end', be: 'Back-end' };
+
+const BANK = [
+
+/* ---------------------------------------------------------- FE */
+{
+  id: 'fe-01',
+  section: 'fe',
+  topic: 'State management',
+  level: 'trung bình',
+  multi: true,
+  q: 'Dự án đặt luật: dữ liệu từ API để <strong>TanStack Query</strong>, state phía client (auth, bộ lọc, UI) để <strong>Zustand</strong>. Nếu thay vào đó bạn gọi <code>axios</code> rồi <code>set()</code> thẳng kết quả vào Zustand, bạn <strong>mất</strong> những gì?',
+  options: [
+    { id: 'a', text: 'Cơ chế chống race condition khi hai request cùng loại trả về không đúng thứ tự' },
+    { id: 'b', text: '<code>isLoading</code> / <code>error</code> sinh sẵn cho từng truy vấn' },
+    { id: 'c', text: 'Gộp request trùng — hai component cùng hỏi một API chỉ bay đi một lần' },
+    { id: 'd', text: 'Tự dọn dữ liệu không còn ai dùng sau <code>gcTime</code>' },
+    { id: 'e', text: 'Khả năng lưu bộ lọc và số trang ở phía client' },
+    { id: 'f', text: 'Kiểu TypeScript của response trả về' },
+  ],
+  correct: ['a', 'b', 'c', 'd'],
+  why: `
+
+    <p><strong>e</strong> và <strong>f</strong> là mồi nhử. Lưu bộ lọc chính là việc của Zustand — không mất gì cả.
+    Còn kiểu TypeScript đến từ khai báo hàm gọi API, chẳng liên quan tới thư viện quản lý state.</p>
+
+    <h4>Một ý duy nhất, mọi thứ khác chỉ là hệ quả</h4>
+    <div class="script">
+      <p>Dữ liệu API nằm trên FE <strong>không phải là dữ liệu</strong>. Nó là <strong>tấm ảnh chụp</strong> dữ liệu.</p>
+    </div>
+    <p>Khi màn hình gọi <code>GET /orders?page=3</code>, server trả về một mảng. Mảng đó là ảnh chụp kho dữ liệu
+    tại đúng mili-giây ấy. Chụp xong là nó bắt đầu cũ đi — vì kho vẫn tiếp tục đổi: thợ khác nhận đơn,
+    admin đổi trạng thái, khách huỷ đơn. Bạn không hay biết gì cả.</p>
+    <p>Còn ô tìm kiếm bạn vừa gõ thì khác hẳn. Không có "kho" nào ở đâu chứa giá trị đó — <strong>chính FE là bản gốc</strong>.
+    Không thể cũ, vì không có gì để mà lệch.</p>
+    <pre><code>Server state  →  FE giữ BẢN SAO  →  phải lo "bản sao còn khớp bản gốc không"
+Client state  →  FE giữ BẢN GỐC  →  không có chuyện đó</code></pre>
+
+    <h4>Ranh giới là quyền sở hữu, không phải "sửa được hay không"</h4>
+    <p>Rất nhiều người trả lời "Query dành cho dữ liệu sửa được". <strong>Sai.</strong> Danh sách danh mục
+    không ai sửa vẫn là server state — vì admin vẫn có thể thêm danh mục lúc bạn đang xem.</p>
+    <div class="tbl-wrap"><table>
+      <tr><th></th><th>Ai giữ bản gốc</th><th>Hệ quả</th></tr>
+      <tr><td><strong>Server state</strong></td><td>Server. FE chỉ giữ <em>một bản sao có thể đã cũ</em></td>
+          <td>Có thể lỗi thời mà FE không hay biết</td></tr>
+      <tr><td><strong>Client state</strong></td><td>Chính FE. Không ai khác đụng được</td>
+          <td>Không bao giờ "cũ". Không cần đồng bộ với ai</td></tr>
+    </table></div>
+
+    <h4>Giữ một bản sao thì phải làm 6 việc</h4>
+    <p>Đây là phần cốt lõi. Nắm được 6 việc này là hiểu Query, và trả lời được mọi biến thể câu hỏi.</p>
+    <div class="tbl-wrap"><table>
+      <tr><th>Việc phải làm</th><th>Query gọi tên là gì</th></tr>
+      <tr><td>1. Nhớ ảnh này chụp <strong>cái gì</strong></td><td><code>queryKey</code></td></tr>
+      <tr><td>2. Biết ảnh chụp <strong>lúc nào</strong>, bao lâu thì coi là cũ</td><td><code>staleTime</code></td></tr>
+      <tr><td>3. Biết khi nào <strong>vứt ảnh đi</strong> cho nhẹ bộ nhớ</td><td><code>gcTime</code></td></tr>
+      <tr><td>4. Biết khi nào phải <strong>chụp lại</strong></td><td><code>invalidateQueries</code>, refetch khi focus lại tab</td></tr>
+      <tr><td>5. Không để <strong>ảnh cũ đè ảnh mới</strong></td><td>gắn kết quả theo <code>queryKey</code></td></tr>
+      <tr><td>6. Không <strong>chụp trùng</strong> cùng một thứ hai lần</td><td>dedupe theo <code>queryKey</code></td></tr>
+    </table></div>
+    <p><code>queryKey</code> xuất hiện ở <strong>4 trên 6 dòng</strong>. Nó không phải cái tên tuỳ tiện —
+    nó là <strong>danh tính của tấm ảnh</strong>.</p>
+    <p>Câu hỏi thật: nhồi vào Zustand thì bạn có làm 6 việc đó không? Không — bạn chỉ có một biến.
+    Sáu việc kia hoặc bạn tự viết lại, hoặc bạn không làm. Mà "không làm" nghĩa là <em>có bug, chỉ là chưa gặp</em>.</p>
+
+    <h4>Xem kỹ việc số 5 — thứ đắt nhất</h4>
+    <p>Bạn có ô tìm thợ. Gõ "dien" rồi sửa thành "nuoc". Hai request bay đi:</p>
+    <pre><code>0ms    gõ "dien"   →  request A bay đi
+120ms  gõ "nuoc"   →  request B bay đi
+250ms  request B về →  set(kết quả "nuoc")   ✔ màn hình đúng
+600ms  request A về →  set(kết quả "dien")   ✘ màn hình vừa bị đè</code></pre>
+    <p>Kết cục: ô input ghi "nuoc", danh sách bên dưới là thợ điện. Người dùng không hiểu chuyện gì,
+    còn bạn thì không tái hiện được vì nó chỉ xảy ra khi mạng chậm không đều.</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 640 200" role="img" aria-label="Hai request tìm kiếm bay đi, request cũ trả về sau và ghi đè kết quả mới khi tự quản state">
+        <defs>
+          <marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+          <marker id="ar1b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--bad)"/></marker>
+        </defs>
+        <text x="0" y="14" font-size="11" font-family="monospace" fill="currentColor">gõ "dien"</text>
+        <text x="0" y="76" font-size="11" font-family="monospace" fill="currentColor">gõ "nuoc"</text>
+        <line x1="0" y1="150" x2="620" y2="150" stroke="currentColor" stroke-width="1" opacity=".35" marker-end="url(#ar1)"/>
+        <text x="556" y="168" font-size="11" font-family="monospace" fill="currentColor" opacity=".7">thời gian</text>
+        <line x1="90" y1="24" x2="330" y2="140" stroke="var(--bad)" stroke-width="1.6" marker-end="url(#ar1b)"/>
+        <text x="150" y="52" font-size="11" font-family="monospace" fill="var(--bad)">chậm — về SAU</text>
+        <line x1="90" y1="86" x2="230" y2="140" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar1)"/>
+        <text x="150" y="112" font-size="11" font-family="monospace" fill="currentColor">nhanh — về TRƯỚC</text>
+        <circle cx="230" cy="150" r="4" fill="currentColor"/>
+        <circle cx="330" cy="150" r="4" fill="var(--bad)"/>
+        <text x="360" y="146" font-size="12" font-family="monospace" fill="var(--bad)">kết quả "dien" ghi đè</text>
+        <text x="360" y="162" font-size="12" font-family="monospace" fill="var(--bad)">màn hình nói dối</text>
+      </svg>
+      <figcaption>Tự quản bằng Zustand: response về sau thắng, bất kể nó ứng với truy vấn nào.</figcaption>
+    </figure>
+
+    <p><strong>Vì sao Zustand dính còn Query thì không?</strong></p>
+    <p>Zustand chỉ có <em>một</em> ô nhớ <code>results</code>. Ai gọi <code>set()</code> sau thì thắng —
+    nó không có cách nào biết kết quả này ứng với truy vấn nào.</p>
+    <p>Query thì mỗi truy vấn có <strong>địa chỉ riêng</strong>:</p>
+    <pre><code>['repairmen','list',{search:'dien'}]  ←  kết quả A đi vào đây
+['repairmen','list',{search:'nuoc'}]  ←  kết quả B đi vào đây</code></pre>
+    <p>Component đang hiển thị ô <code>search:'nuoc'</code>. Kết quả A về muộn thì rơi vào ô <code>'dien'</code> —
+    một ô <strong>không ai đang xem</strong>. Màn hình không nhúc nhích.</p>
+    <div class="flag"><p>Query không chống race condition bằng thuật toán khôn ngoan nào cả.
+    Nó chỉ <strong>để dữ liệu đúng chỗ</strong>. Cái <code>queryKey</code> gánh hết.</p></div>
+
+    <h4>Ba thứ còn lại bạn đánh mất</h4>
+    <ul>
+      <li><strong>Tự viết lại mọi thứ</strong> — <code>isLoading</code>, <code>error</code>, retry,
+          refetch khi focus lại tab, huỷ khi unmount.</li>
+      <li><strong>Dữ liệu không bao giờ chết</strong> — Zustand giữ mãi trong bộ nhớ. Đăng xuất xong,
+          danh sách đơn của người cũ vẫn nằm đó.</li>
+      <li><strong>Logic vỡ vụn</strong> — mỗi chỗ sửa đơn phải tự nhớ gọi lại API nào.
+          Query gom về một mối bằng <code>queryKey</code>.</li>
+    </ul>
+
+    <h4>Cách trả lời khi phỏng vấn</h4>
+    <p>Đừng kể tên tính năng. Nói theo mạch nhân quả:</p>
+    <div class="script">
+      <p>"Dữ liệu API trên FE chỉ là bản sao của thứ mình không sở hữu, nên phải quản chuyện nó lỗi thời —
+      biết chụp cái gì, chụp lúc nào, khi nào chụp lại, và không để bản cũ đè bản mới. Sáu việc đó là những gì
+      Query làm, và tất cả đều xoay quanh <code>queryKey</code>.</p>
+      <p>Còn bộ lọc thì FE sở hữu hoàn toàn, không có bản gốc nào để lệch, nên để Zustand là đủ."</p>
+    </div>
+  `,
+  followups: [
+    { q: 'Dữ liệu API chỉ đọc, không bao giờ sửa, có cần Query không?',
+      a: '<p>Có. Ranh giới là <strong>ai sở hữu sự thật</strong>, không phải sửa được hay không. Dữ liệu chỉ đọc vẫn có thể đổi ở phía server, vẫn cần cache, vẫn cần dedupe, vẫn cần loading state.</p>' },
+    { q: 'Thông tin người dùng đang đăng nhập (<code>/me</code>) là server state hay client state?',
+      a: '<p>Cả hai, tách ra mới đúng. <strong>Hồ sơ user</strong> (tên, quyền, vai trò) là server state → Query. <strong>Trạng thái phiên</strong> (đã đăng nhập chưa, access token trong bộ nhớ) là client state → Zustand.</p><p>Đây chính là cách dự án đang làm: <code>auth-store</code> giữ phiên, còn <code>useBootstrapAuth</code> gọi <code>/me</code>.</p>' },
+    { q: 'Vậy có bao giờ được phép để dữ liệu API trong Zustand không?',
+      a: '<p>Có, khi nó đã <strong>thôi là server state</strong>. Ví dụ form nhiều bước: bạn tải dữ liệu đơn về (Query), người dùng sửa dở dang qua 3 bước chưa gửi lên — bản nháp đó là client state, FE sở hữu nó.</p>' },
+  ],
+},
+
+{
+  id: 'fe-02',
+  section: 'fe',
+  topic: 'TanStack Query',
+  level: 'khó',
+  multi: false,
+  q: 'Màn hình đơn hàng có phân trang và bộ lọc. Người dùng đang ở <strong>trang 3</strong>, bộ lọc <code>status=PENDING</code>, và vừa đổi trạng thái một đơn sang <code>DONE</code>. <code>queryKey</code> của danh sách là <code>[\'orders\',\'list\',{page,status}]</code>. Cách xử lý nào <strong>đúng nhất</strong>?',
+  options: [
+    { id: 'a', text: '<code>setQueryData</code> ghi thẳng đơn vừa sửa vào cache của đúng trang 3' },
+    { id: 'b', text: '<code>invalidateQueries({ queryKey: [\'orders\',\'list\'] })</code>' },
+    { id: 'c', text: '<code>invalidateQueries({ queryKey: [\'orders\',\'list\',{page:3,status:\'PENDING\'}], exact: true })</code>' },
+    { id: 'd', text: '<code>window.location.reload()</code> cho chắc' },
+  ],
+  correct: ['b'],
+  why: `
+
+    <h4>Nếu queryKey là địa chỉ, invalidate chỉ là dán nhãn</h4>
+    <div class="script">
+      <p><code>queryKey</code> = <strong>địa chỉ</strong> của một ô cache.<br>
+      <code>invalidateQueries</code> = <em>"đánh dấu những địa chỉ này là ảnh cũ, cần chụp lại"</em>.</p>
+    </div>
+    <p>Đây là code thật trong <code>order.hooks.ts</code> của bạn:</p>
+    <pre><code>return useQuery({
+  queryKey: [KEY, 'list', params ?? null],   // params = {page, status, search...}
+  queryFn: () =&gt; orderApi.list(params),
+});</code></pre>
+
+    <h4>Trong cache có nhiều ô cùng lúc</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th>Địa chỉ</th><th>Nội dung</th></tr>
+      <tr><td><code>['orders','list',{page:1,status:'PENDING'}]</code></td><td>20 đơn</td></tr>
+      <tr><td><code>['orders','list',{page:3,status:'PENDING'}]</code></td><td><strong>đang xem</strong></td></tr>
+      <tr><td><code>['orders','list',{page:1,status:'DONE'}]</code></td><td>tab khác</td></tr>
+      <tr><td><code>['orders','detail','abc-123']</code></td><td>trang chi tiết</td></tr>
+    </table></div>
+
+    <p>Bạn đổi một đơn từ <code>PENDING</code> sang <code>DONE</code>. Câu hỏi then chốt:
+    <strong>ô nào vừa sai?</strong> Không phải chỉ ô đang xem, mà là:</p>
+    <ul>
+      <li><code>page:3, PENDING</code> — đơn đó phải <strong>biến mất</strong> khỏi đây</li>
+      <li><code>page:1, PENDING</code> — tổng số trang đổi, thứ tự dồn lên</li>
+      <li><code>page:1, DONE</code> — đơn đó phải <strong>xuất hiện</strong> ở đây</li>
+    </ul>
+    <p><strong>Cả ba ô, dù bạn chỉ nhìn thấy một.</strong> Đó là lý do ghi tay bằng <code>setQueryData</code>
+    vào ô đang xem là sai — nó chỉ vá được thứ bạn nhìn thấy.</p>
+
+    <h4>Thiếu phần đuôi là chủ đích, không phải sơ suất</h4>
+    <pre><code>qc.invalidateQueries({ queryKey: [KEY, 'list'] });   // thiếu hẳn params</code></pre>
+    <p><code>invalidateQueries</code> khớp theo <strong>tiền tố</strong> (<code>exact: false</code> là mặc định),
+    nên "thiếu" phần đuôi nghĩa là <em>khớp mọi đuôi</em>. Một dòng quét sạch cả ba ô.</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 220" role="img" aria-label="Cây queryKey: gọi invalidate với tiền tố orders list làm mất hiệu lực mọi nhánh con là các trang và bộ lọc khác nhau">
+        <rect x="230" y="8" width="160" height="30" rx="6" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <text x="310" y="27" font-size="12" font-family="monospace" fill="var(--accent)" text-anchor="middle">['orders','list']</text>
+        <text x="400" y="27" font-size="11" font-family="monospace" fill="var(--accent)">← gọi ở đây</text>
+        <line x1="310" y1="38" x2="310" y2="62" stroke="currentColor" stroke-width="1" opacity=".5"/>
+        <line x1="90" y1="62" x2="530" y2="62" stroke="currentColor" stroke-width="1" opacity=".5"/>
+        <line x1="90"  y1="62" x2="90"  y2="86" stroke="currentColor" stroke-width="1" opacity=".5"/>
+        <line x1="310" y1="62" x2="310" y2="86" stroke="currentColor" stroke-width="1" opacity=".5"/>
+        <line x1="530" y1="62" x2="530" y2="86" stroke="currentColor" stroke-width="1" opacity=".5"/>
+        <rect x="10" y="86" width="160" height="34" rx="6" fill="none" stroke="var(--bad)" stroke-width="1.4" stroke-dasharray="4 3"/>
+        <text x="90" y="101" font-size="10.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">{page:1,PENDING}</text>
+        <text x="90" y="114" font-size="10.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">tổng số trang đổi</text>
+        <rect x="230" y="86" width="160" height="34" rx="6" fill="none" stroke="var(--bad)" stroke-width="1.4" stroke-dasharray="4 3"/>
+        <text x="310" y="101" font-size="10.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">{page:3,PENDING}</text>
+        <text x="310" y="114" font-size="10.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">đơn phải biến mất</text>
+        <rect x="450" y="86" width="160" height="34" rx="6" fill="none" stroke="var(--bad)" stroke-width="1.4" stroke-dasharray="4 3"/>
+        <text x="530" y="101" font-size="10.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">{page:1,DONE}</text>
+        <text x="530" y="114" font-size="10.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">đơn phải xuất hiện</text>
+        <line x1="10" y1="150" x2="610" y2="150" stroke="currentColor" stroke-width="1" opacity=".2"/>
+        <text x="10" y="176" font-size="11.5" font-family="monospace" fill="currentColor">Chỉ nhánh đang hiển thị mới gọi lại API ngay.</text>
+        <text x="10" y="196" font-size="11.5" font-family="monospace" fill="currentColor">Nhánh khác chỉ bị đánh dấu cũ, quay lại mới tải.</text>
+      </svg>
+      <figcaption>Khớp tiền tố quét cả cây con — đúng thứ ta cần, vì đổi trạng thái ảnh hưởng nhiều nhánh chứ không riêng nhánh đang mở.</figcaption>
+    </figure>
+
+    <div class="flag"><p><strong>Một chi tiết để yên tâm:</strong> <code>params</code> là object, nhưng Query băm nó
+    <strong>ổn định</strong> — <code>{page:3,status:'X'}</code> và <code>{status:'X',page:3}</code> ra cùng một
+    địa chỉ. Không phải lo thứ tự khoá.</p></div>
+
+    <h4>Vì sao ba cách kia sai</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th></th><th>Hỏng ở đâu</th></tr>
+      <tr><td><code>a</code> setQueryData</td>
+          <td>Đơn vừa đổi sang <code>DONE</code> lẽ ra phải biến mất khỏi danh sách đang lọc <code>PENDING</code>.
+              Ghi tay vào cache thì nó vẫn nằm đó — UI nói dối. Chưa kể tổng số trang đã đổi.</td></tr>
+      <tr><td><code>c</code> exact: true</td>
+          <td>Chỉ trang 3 được làm mới. Trang 2, trang 4 và tab lọc <code>DONE</code> vẫn giữ dữ liệu cũ;
+              bấm sang là thấy sai.</td></tr>
+      <tr><td><code>d</code> reload</td>
+          <td>Mất toàn bộ state client (bộ lọc, vị trí cuộn), tải lại cả bundle.
+              Đây là dấu hiệu không hiểu công cụ mình đang dùng.</td></tr>
+    </table></div>
+
+    <div class="flag"><p><strong>Khi nào <code>setQueryData</code> mới đúng?</strong> Khi việc sửa
+    <em>không thể</em> làm bản ghi rơi khỏi tập kết quả — ví dụ sửa ghi chú, đổi tên hiển thị.
+    Lúc đó ghi thẳng vào cache tiết kiệm được một vòng gọi mạng.</p></div>
+
+    <h4>Cách trả lời khi phỏng vấn</h4>
+    <div class="script">
+      <p>"Tôi <code>invalidateQueries</code> theo tiền tố <code>['orders','list']</code> chứ không ghi tay vào cache,
+      vì đổi trạng thái có thể làm đơn đó rơi khỏi bộ lọc hiện tại và làm lệch tổng số trang — ghi tay chỉ vá
+      được cái mình nhìn thấy.</p>
+      <p>Và tôi đặt lời gọi đó trong <code>onSuccess</code> của mutation hook chứ không ở component,
+      để mọi nơi dùng mutation đó đều được làm mới mà không ai phải nhớ."</p>
+    </div>
+  `,
+  followups: [
+    { q: 'Invalidate xong, danh sách ngắn lại và trang 3 không còn tồn tại thì sao?',
+      a: '<p>BE trả mảng rỗng kèm <code>meta.totalPages = 2</code>, người dùng nhìn thấy <strong>trang trắng</strong> — lỗi rất hay gặp và rất hay bị hỏi.</p><p>Cách xử lý: sau khi có <code>meta</code>, kẹp lại số trang về <code>Math.min(page, totalPages)</code> — đặt trong store bộ lọc hoặc một effect nhỏ ở tầng danh sách. Đừng để mỗi trang tự lo, sẽ quên.</p>' },
+    { q: '<code>exact</code> mặc định là gì, và khi nào cần bật <code>true</code>?',
+      a: '<p>Mặc định <code>false</code> — khớp tiền tố. Bật <code>true</code> khi bạn <strong>chỉ</strong> muốn đụng đúng một truy vấn, ví dụ làm mới một bản ghi chi tiết cụ thể mà không muốn kéo theo cả danh sách.</p>' },
+    { q: 'Vì sao bộ lọc phải nằm trong <code>queryKey</code> chứ không chỉ truyền vào hàm gọi API?',
+      a: '<p>Vì <code>queryKey</code> <strong>là</strong> danh tính của ô cache. Hai bộ lọc khác nhau mà chung key thì Query coi là cùng một dữ liệu: đổi bộ lọc sẽ hiện lại kết quả cũ, và cache của bộ lọc này sẽ đè lên bộ lọc kia.</p>' },
+    { q: 'Có nên gọi <code>invalidateQueries</code> thẳng ở component sau khi <code>mutate</code> xong không?',
+      a: '<p>Không nên. Đặt trong <code>onSuccess</code> của chính mutation hook (đúng như dự án đang làm ở <code>order.hooks.ts</code>) thì mọi nơi gọi mutation đó đều được làm mới, không ai phải nhớ. Để ở component là sớm muộn cũng có chỗ quên.</p>' },
+  ],
+},
+
+{
+  id: 'fe-03',
+  section: 'fe',
+  topic: 'React core',
+  level: 'khó',
+  multi: true,
+  q: 'Đoạn code theo dõi vị trí thợ dưới đây có <strong>nhiều lỗi</strong>. Chọn tất cả những lỗi thật sự có mặt.',
+  code: `function OrderTracking({ orderId }: { orderId: string }) {
+  const [position, setPosition] = useState<LatLng | null>(null);
+
+  useEffect(() => {
+    const socket = connectSocket();
+    socket.on('position', (data) => setPosition(data));
+    fetch(\`/api/v1/orders/\${orderId}/position\`)
+      .then((r) => r.json())
+      .then((d) => setPosition(d));
+  }, []);
+
+  return <TrackingMap position={position} />;
+}`,
+  options: [
+    { id: 'a', text: 'Không cleanup: rời màn hình rồi listener vẫn sống, quay lại thì gắn chồng thêm cái nữa' },
+    { id: 'b', text: 'Mảng phụ thuộc <code>[]</code>: đổi sang xem đơn khác vẫn hiển thị vị trí của đơn cũ' },
+    { id: 'c', text: '<code>fetch</code> không có cờ huỷ: kết quả cũ về muộn ghi đè lên vị trí realtime mới hơn' },
+    { id: 'd', text: 'Gọi <code>setPosition</code> bên trong callback là stale closure nên luôn set <code>undefined</code>' },
+    { id: 'e', text: 'Phải dùng <code>useRef</code> thay <code>useState</code> vì vị trí thay đổi liên tục' },
+  ],
+  correct: ['a', 'b', 'c'],
+  why: `
+    <p><strong>d</strong> sai: hàm <em>set</em> của <code>useState</code> giữ nguyên định danh suốt vòng đời component,
+    gọi từ closure cũ vẫn chạy đúng. Stale closure chỉ cắn khi bạn <em>đọc</em> state hoặc prop cũ — ở đây chính là
+    biến <code>orderId</code> trong lời gọi <code>fetch</code>, tức là lỗi <strong>b</strong>.</p>
+    <p><strong>e</strong> sai: vị trí cần vẽ lại lên bản đồ, mà <code>useRef</code> thì không kích hoạt render.</p>
+
+    <h4>Vòng đời effect và chỗ thiếu cleanup</h4>
+    <figure class="dg">
+      <svg viewBox="0 0 640 210" role="img" aria-label="So sánh vòng đời effect có cleanup và không cleanup: không cleanup thì listener tích tụ sau mỗi lần vào lại màn hình">
+        <defs>
+          <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+          <marker id="ar3b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--bad)"/></marker>
+        </defs>
+        <text x="0" y="12" font-size="10.5" font-family="monospace" fill="var(--bad)" letter-spacing="1">KHÔNG CLEANUP</text>
+        <rect x="0" y="24" width="96" height="28" rx="5" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="48" y="42" font-size="11" font-family="monospace" fill="currentColor" text-anchor="middle">vào lần 1</text>
+        <line x1="96" y1="38" x2="150" y2="38" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar3)"/>
+        <text x="160" y="42" font-size="11" font-family="monospace" fill="var(--bad)">1 listener</text>
+
+        <rect x="260" y="24" width="96" height="28" rx="5" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="308" y="42" font-size="11" font-family="monospace" fill="currentColor" text-anchor="middle">rời đi</text>
+        <line x1="356" y1="38" x2="410" y2="38" stroke="var(--bad)" stroke-width="1.3" marker-end="url(#ar3b)"/>
+        <text x="420" y="42" font-size="11" font-family="monospace" fill="var(--bad)">vẫn 1 listener</text>
+
+        <rect x="0" y="64" width="96" height="28" rx="5" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="48" y="82" font-size="11" font-family="monospace" fill="currentColor" text-anchor="middle">vào lần 2</text>
+        <line x1="96" y1="78" x2="150" y2="78" stroke="var(--bad)" stroke-width="1.3" marker-end="url(#ar3b)"/>
+        <text x="160" y="82" font-size="11" font-family="monospace" fill="var(--bad)">2 listener → setState 2 lần mỗi gói tin</text>
+
+        <line x1="0" y1="112" x2="640" y2="112" stroke="currentColor" stroke-width="1" opacity=".2"/>
+
+        <text x="0" y="136" font-size="10.5" font-family="monospace" fill="var(--ok)" letter-spacing="1">CÓ CLEANUP</text>
+        <rect x="0" y="148" width="96" height="28" rx="5" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="48" y="166" font-size="11" font-family="monospace" fill="currentColor" text-anchor="middle">vào</text>
+        <line x1="96" y1="162" x2="150" y2="162" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar3)"/>
+
+        <rect x="158" y="148" width="130" height="28" rx="5" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="223" y="166" font-size="11" font-family="monospace" fill="currentColor" text-anchor="middle">socket.on</text>
+        <line x1="288" y1="162" x2="342" y2="162" stroke="var(--ok)" stroke-width="1.3"/>
+
+        <rect x="350" y="148" width="150" height="28" rx="5" fill="none" stroke="var(--ok)" stroke-width="1.4"/>
+        <text x="425" y="166" font-size="11" font-family="monospace" fill="var(--ok)" text-anchor="middle">return () => off()</text>
+        <line x1="500" y1="162" x2="554" y2="162" stroke="var(--ok)" stroke-width="1.3"/>
+        <text x="562" y="166" font-size="11" font-family="monospace" fill="var(--ok)">0 tồn dư</text>
+      </svg>
+      <figcaption>Hàm trả về trong <code>useEffect</code> chạy trước mỗi lần effect chạy lại và một lần khi unmount. Không có nó, mỗi lần vào màn hình lại chồng thêm một listener.</figcaption>
+    </figure>
+
+    <h4>Bản sửa</h4>
+    <pre><code>useEffect(() => {
+  let alive = true;                       // chống lỗi (c)
+  const socket = connectSocket();
+  const onPos = (d: LatLng) => setPosition(d);
+  socket.on('position', onPos);
+
+  fetch(\`/api/v1/orders/\${orderId}/position\`)
+    .then((r) => r.json())
+    .then((d) => { if (alive) setPosition(d); });
+
+  return () => {                          // chống lỗi (a)
+    alive = false;
+    socket.off('position', onPos);
+  };
+}, [orderId]);                            // chống lỗi (b)</code></pre>
+    <p>Chuẩn hơn nữa thì dùng <code>AbortController</code> để huỷ hẳn request thay vì chỉ bỏ qua kết quả.</p>
+  `,
+  followups: [
+    { q: 'Sửa <code>[]</code> thành <code>[orderId]</code> đã đủ chưa?',
+      a: '<p>Chưa. Nó mới sửa lỗi <strong>b</strong>. Không có cleanup thì mỗi lần <code>orderId</code> đổi, effect chạy lại và gắn <strong>thêm</strong> một listener nữa — chuyển qua 5 đơn là 5 listener cùng bắn <code>setPosition</code>.</p>' },
+    { q: 'Vì sao chạy dev thấy socket connect hai lần, còn production thì không?',
+      a: '<p>React 18 ở <code>StrictMode</code> cố tình chạy <em>effect → cleanup → effect</em> ngay lần mount đầu. Đó là <strong>tính năng</strong>, không phải lỗi: nó phơi bày đúng những effect không cleanup được. Bản production không làm vậy.</p><p>Cách trả lời ghi điểm: "thấy hai lần là dấu hiệu effect của tôi chưa idempotent, tôi sửa cleanup chứ không tắt StrictMode".</p>' },
+    { q: 'Vì sao dùng biến <code>alive</code> mà không kiểm tra component còn mount hay không?',
+      a: '<p>Vì không có cách nào đúng để hỏi "component còn sống không" — React không cung cấp, và mọi mẹo tự chế đều rò rỉ. Biến cục bộ trong closure của effect thì gắn đúng với <em>lần chạy effect đó</em>, chính xác hơn cả trạng thái mount.</p>' },
+  ],
+},
+
+{
+  id: 'fe-04',
+  section: 'fe',
+  topic: 'TanStack Query',
+  level: 'trung bình',
+  multi: true,
+  q: 'App cấu hình <code>staleTime: 30_000</code> và để <code>gcTime</code> mặc định (5 phút). Người dùng mở danh sách đơn, xem <strong>10 giây</strong>, chuyển sang màn hình khác, <strong>2 phút sau</strong> quay lại đúng màn hình đó. Điều gì xảy ra?',
+  options: [
+    { id: 'a', text: 'Thấy dữ liệu cũ hiện ra <strong>ngay</strong>, không có màn hình loading' },
+    { id: 'b', text: 'Query gọi lại API <strong>ngầm phía sau</strong> vì dữ liệu đã quá 30 giây' },
+    { id: 'c', text: 'Phải chờ loading từ đầu, vì đã rời khỏi màn hình nên cache mất' },
+    { id: 'd', text: 'Cache đã bị xoá vì <code>gcTime</code> là 5 phút' },
+    { id: 'e', text: 'Không gọi lại API, vì <code>gcTime</code> 5 phút vẫn chưa hết' },
+  ],
+  correct: ['a', 'b'],
+  why: `
+    <p>Rời màn hình 2 phút, mà <code>gcTime</code> là 5 phút → cache <strong>vẫn còn</strong> (loại <strong>c</strong> và <strong>d</strong>).
+    Dữ liệu đã 2 phút 10 giây tuổi, quá <code>staleTime</code> 30 giây → bị coi là cũ, nên mount lại sẽ kích hoạt
+    gọi lại ngầm.</p>
+    <p><strong>e</strong> sai vì nhầm vai trò: <code>gcTime</code> không hề tham gia vào quyết định
+    "có gọi lại hay không". Nó chỉ quyết định "còn dữ liệu trong bộ nhớ hay không".</p>
+
+    <h4>Hai đồng hồ, hai trục khác nhau</h4>
+    <div class="script">
+      <p><code>staleTime</code> — "ảnh này còn dùng được bao lâu trước khi tôi phải nghĩ đến chuyện <strong>chụp lại</strong>?"</p>
+      <p><code>gcTime</code> — "không ai xem nữa thì giữ ảnh trong ngăn kéo bao lâu rồi mới <strong>vứt</strong>?"</p>
+    </div>
+    <div class="tbl-wrap"><table>
+      <tr><th></th><th>Quyết định điều gì</th><th>Đồng hồ chạy từ lúc</th><th>Mặc định</th></tr>
+      <tr><td><code>staleTime</code></td><td>Có gọi lại API không</td><td>Nhận được dữ liệu</td><td>0</td></tr>
+      <tr><td><code>gcTime</code></td><td>Còn dữ liệu để hiện ngay không</td><td>Không còn ai xem</td><td>5 phút</td></tr>
+    </table></div>
+
+    <figure class="dg">
+      <svg viewBox="0 0 640 250" role="img" aria-label="Dòng thời gian của một truy vấn: giai đoạn tươi theo staleTime rồi chuyển sang cũ nhưng vẫn hiển thị, sau khi unmount thì gcTime mới đếm và cuối cùng xoá khỏi cache">
+        <defs>
+          <marker id="ar6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        </defs>
+
+        <text x="0" y="12" font-size="10.5" font-family="monospace" fill="currentColor" letter-spacing="1">TRỤC 1 — ĐỘ TƯƠI</text>
+
+        <rect x="0" y="26" width="150" height="34" rx="5" fill="none" stroke="var(--ok)" stroke-width="1.6"/>
+        <text x="75" y="47" font-size="11" font-family="monospace" fill="var(--ok)" text-anchor="middle">FRESH</text>
+        <text x="75" y="74" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle">không gọi lại</text>
+        <text x="75" y="87" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle">dù mount lại</text>
+
+        <rect x="150" y="26" width="400" height="34" rx="5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="5 4"/>
+        <text x="350" y="47" font-size="11" font-family="monospace" fill="currentColor" text-anchor="middle">STALE — vẫn hiện ra màn hình</text>
+        <text x="350" y="74" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle">có cớ (mount / focus / reconnect / invalidate) thì gọi lại NGẦM</text>
+        <text x="350" y="87" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle">người dùng KHÔNG thấy spinner</text>
+
+        <line x1="0" y1="18" x2="150" y2="18" stroke="var(--ok)" stroke-width="1.2"/>
+        <text x="75" y="14" font-size="9.5" font-family="monospace" fill="var(--ok)" text-anchor="middle">staleTime</text>
+
+        <line x1="0" y1="110" x2="640" y2="110" stroke="currentColor" stroke-width="1" opacity=".18"/>
+
+        <text x="0" y="134" font-size="10.5" font-family="monospace" fill="currentColor" letter-spacing="1">TRỤC 2 — TUỔI THỌ TRONG BỘ NHỚ</text>
+
+        <line x1="0" y1="176" x2="600" y2="176" stroke="currentColor" stroke-width="1" opacity=".4" marker-end="url(#ar6)"/>
+
+        <line x1="330" y1="150" x2="330" y2="196" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="330" y="146" font-size="10.5" font-family="monospace" fill="var(--accent)" text-anchor="middle">unmount</text>
+        <text x="330" y="212" font-size="9.5" font-family="monospace" fill="var(--accent)" text-anchor="middle">đồng hồ gcTime</text>
+        <text x="330" y="224" font-size="9.5" font-family="monospace" fill="var(--accent)" text-anchor="middle">MỚI bắt đầu chạy</text>
+
+        <line x1="330" y1="168" x2="520" y2="168" stroke="var(--bad)" stroke-width="1.4"/>
+        <text x="425" y="163" font-size="9.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">gcTime</text>
+
+        <line x1="520" y1="152" x2="520" y2="196" stroke="var(--bad)" stroke-width="1.5"/>
+        <text x="520" y="146" font-size="10.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">XOÁ</text>
+        <text x="560" y="212" font-size="9.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">mount lại = loading</text>
+
+        <text x="10" y="196" font-size="10" font-family="monospace" fill="currentColor" opacity=".8">ngồi lì 3 tiếng ở màn hình này thì gcTime KHÔNG chạy</text>
+      </svg>
+      <figcaption>Hai đồng hồ không nối tiếp nhau. <code>staleTime</code> đếm từ lúc có dữ liệu; <code>gcTime</code> chỉ bắt đầu đếm khi không còn component nào dùng truy vấn đó.</figcaption>
+    </figure>
+
+    <h4>Hiểu nhầm phổ biến nhất</h4>
+    <div class="flag"><p><strong>"<code>staleTime: 0</code> nghĩa là không cache" — sai hoàn toàn.</strong>
+    Nó chỉ nghĩa là dữ liệu bị coi là cũ ngay, nên sẽ gọi lại ở lần có cớ gần nhất. Trong lúc chờ,
+    nó <em>vẫn hiện dữ liệu cũ ra</em>. Muốn thật sự không cache thì phải đặt <code>gcTime: 0</code>.</p></div>
+
+    <h4>Cái gì "có cớ" để gọi lại?</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th>Sự kiện</th><th>Tuỳ chọn</th><th>Mặc định</th></tr>
+      <tr><td>Component mount</td><td><code>refetchOnMount</code></td><td>bật</td></tr>
+      <tr><td>Quay lại tab</td><td><code>refetchOnWindowFocus</code></td><td>bật</td></tr>
+      <tr><td>Có mạng lại</td><td><code>refetchOnReconnect</code></td><td>bật</td></tr>
+      <tr><td>Hẹn giờ</td><td><code>refetchInterval</code></td><td>tắt</td></tr>
+      <tr><td>Gọi tay</td><td><code>invalidateQueries</code></td><td>—</td></tr>
+    </table></div>
+    <p><code>invalidateQueries</code> <strong>không quan tâm</strong> <code>staleTime</code> — nó đánh dấu cũ ngay
+    và gọi lại ngay nếu đang có ai xem. Đây là câu trả lời cho cái bẫy: <em>"đặt staleTime 10 phút thì sửa đơn xong
+    làm sao thấy dữ liệu mới?"</em> — staleTime quản làm mới <strong>tự động</strong>, invalidate là
+    <strong>chủ động</strong>, và chủ động luôn thắng.</p>
+
+    <h4>Đặt bao nhiêu là hợp lý</h4>
+    <p>Đừng học thuộc con số. Hỏi hai câu: <strong>dữ liệu này đổi nhanh cỡ nào</strong>, và
+    <strong>hiện dữ liệu cũ vài giây thì tệ đến mức nào</strong>.</p>
+    <div class="tbl-wrap"><table>
+      <tr><th>Loại dữ liệu</th><th>staleTime</th><th>Vì sao</th></tr>
+      <tr><td>Danh mục, dịch vụ, danh sách quyền</td><td>5–30 phút</td><td>Cả ngày mới đổi một lần; đổi thì đã có invalidate lo</td></tr>
+      <tr><td>Hồ sơ người dùng (<code>/me</code>)</td><td>5 phút</td><td>Ít đổi, mà đổi thì do chính mình gây ra</td></tr>
+      <tr><td>Danh sách đơn hàng</td><td>0–30 giây</td><td>Thợ khác có thể nhận đơn bất cứ lúc nào</td></tr>
+      <tr><td>Số dư ví, tiền</td><td>0</td><td>Hiện sai số tiền là mất niềm tin — không có "vài giây cũng được"</td></tr>
+      <tr><td>Vị trí realtime</td><td>0 + socket</td><td>Không dựa vào polling</td></tr>
+    </table></div>
+    <p>Với <code>gcTime</code>, hai quy tắc là đủ:</p>
+    <ul>
+      <li><strong><code>gcTime</code> phải ≥ <code>staleTime</code>.</strong> Ngược lại là tự mâu thuẫn:
+      bảo "ảnh còn tươi 10 phút" nhưng lại vứt sau 1 phút — quay lại vẫn phải tải từ đầu,
+      <code>staleTime</code> dài thành vô nghĩa.</li>
+      <li>Mặc định 5 phút hợp cho hầu hết. <strong>Nâng</strong> với truy vấn đắt mà hay quay lại (báo cáo, bảng lớn).
+      <strong>Hạ</strong> với dữ liệu nhạy cảm — đừng giữ đơn của người vừa đăng xuất trong RAM.</li>
+    </ul>
+
+    <h4>Câu chốt khi phỏng vấn</h4>
+    <div class="script">
+      <p>"<code>staleTime</code> quyết định <strong>có gọi lại không</strong>, <code>gcTime</code> quyết định
+      <strong>còn dữ liệu để hiện ngay không</strong>. Hết staleTime thì dữ liệu vẫn hiện, chỉ là lần tới có cớ
+      sẽ gọi lại ngầm — không có spinner. Hết gcTime mới thật sự mất, và đồng hồ đó chỉ chạy khi không còn ai xem.</p>
+      <p>Tôi chọn staleTime theo tốc độ đổi của dữ liệu, và luôn giữ gcTime ≥ staleTime để khỏi tự mâu thuẫn."</p>
+    </div>
+  `,
+  followups: [
+    { q: 'Dự án đang đặt <code>staleTime: 30_000</code> kèm <code>refetchOnWindowFocus: false</code>. Có vấn đề gì không?',
+      a: '<p>Kết hợp hai lựa chọn đó lại thì cớ để gọi lại chỉ còn <em>mount</em> và <em>invalidate</em>. Nghĩa là thợ mở tab danh sách đơn, chuyển sang Zalo trả lời khách 10 phút, quay lại — <strong>danh sách vẫn y nguyên</strong>, dù trong 10 phút đó có thể đã có đơn mới hoặc đơn bị người khác nhận mất.</p><p>Không phải cấu hình sai — nó tối ưu cho "đỡ tốn request". Nhưng riêng màn hình tranh đơn thì cần tối ưu cho "đừng để thợ nhận hụt". Vá gọn bằng cách ghi đè ngay tại hook <code>useOrders</code>: <code>staleTime: 10_000</code> + <code>refetchOnWindowFocus: true</code>, không đụng mặc định chung.</p>' },
+    { q: 'Đặt <code>staleTime: Infinity</code> có hợp lý bao giờ không?',
+      a: '<p>Có, khi dữ liệu <strong>chỉ đổi do chính app gây ra</strong> và bạn chắc chắn đã invalidate ở mọi chỗ gây ra thay đổi đó. Ví dụ điển hình: danh sách quyền, cấu hình hệ thống.</p><p>Rủi ro: sót một chỗ invalidate là dữ liệu sai <em>vĩnh viễn</em> cho tới khi tải lại trang — không có cơ chế tự chữa nào. Nên chỉ dùng khi bạn kiểm soát được toàn bộ đường ghi.</p>' },
+    { q: '<code>setQueryData</code> có làm dữ liệu "tươi" trở lại không?',
+      a: '<p>Có. Nó cập nhật dữ liệu <strong>và</strong> mốc thời gian, nên đồng hồ <code>staleTime</code> chạy lại từ đầu. Đó cũng chính là lý do phải cẩn thận: ghi tay một giá trị sai vào cache thì Query sẽ tin nó là mới và không đi kiểm tra lại cho tới hết staleTime.</p>' },
+    { q: 'Vì sao mặc định của <code>staleTime</code> lại là 0?',
+      a: '<p>Vì đó là lựa chọn <strong>an toàn nhất</strong>: luôn kiểm tra lại ở cơ hội gần nhất, không bao giờ hiện dữ liệu cũ lâu hơn cần thiết. Thư viện không biết dữ liệu của bạn đổi nhanh cỡ nào, nên nó chọn phương án không bao giờ gây sai — đổi lại là tốn request.</p><p>Rất nhiều team đặt mặc định chung 30–60 giây để cắt bớt, đúng như dự án bạn đang làm.</p>' },
+  ],
+},
+
+{
+  id: 'fe-05',
+  section: 'fe',
+  topic: 'TanStack Query',
+  level: 'khó',
+  multi: true,
+  q: 'Sau khi mutation thành công, một dev viết <code>qc.setQueryData([\'orders\',\'list\'], newData)</code> để cập nhật danh sách đang hiển thị (khoá thật của danh sách là <code>[\'orders\',\'list\',{page:3,status:\'PENDING\'}]</code>). Nhận định nào <strong>đúng</strong>?',
+  options: [
+    { id: 'a', text: 'Không có gì xảy ra trên màn hình — <code>setQueryData</code> khớp khoá <strong>chính xác</strong>, không khớp tiền tố' },
+    { id: 'b', text: 'Lệnh này lặng lẽ tạo ra một ô cache mới mà không component nào đang xem' },
+    { id: 'c', text: 'Query sẽ báo lỗi hoặc cảnh báo vì khoá không tồn tại' },
+    { id: 'd', text: 'Muốn ghi theo tiền tố thì phải dùng <code>setQueriesData</code> (số nhiều)' },
+    { id: 'e', text: 'Dữ liệu ghi vào sẽ được coi là <strong>mới tinh</strong>, đồng hồ <code>staleTime</code> chạy lại từ đầu' },
+  ],
+  correct: ['a', 'b', 'd', 'e'],
+  why: `
+    <p><strong>c</strong> sai — và đó chính là điều làm lỗi này nguy hiểm. Không có lỗi, không có cảnh báo,
+    không có gì cả. Bạn tưởng đã cập nhật, thực ra chỉ tạo thêm một ô cache mồ côi.</p>
+
+    <h4>setQueryData là gì</h4>
+    <div class="script">
+      <p><code>invalidateQueries</code> — "ảnh này cũ rồi, đi <strong>chụp lại</strong> đi" → có gọi mạng</p>
+      <p><code>setQueryData</code> — "tôi có ảnh mới đây, <strong>dán thẳng</strong> vào ô đó" → không gọi mạng</p>
+    </div>
+    <pre><code>const qc = useQueryClient();
+
+// dạng 1 — đưa hẳn giá trị mới
+qc.setQueryData(['orders', 'detail', id], newOrder);
+
+// dạng 2 — sửa từ giá trị cũ (hay dùng hơn)
+qc.setQueryData(['orders', 'detail', id], (prev) =&gt; {
+  if (!prev) return prev;              // chưa có gì trong cache thì bỏ qua
+  return { ...prev, status: 'DONE' };  // PHẢI tạo object mới
+});</code></pre>
+
+    <h4>Ba luật phải nhớ</h4>
+    <ul>
+      <li><strong>Địa chỉ khớp CHÍNH XÁC.</strong> Đây là khác biệt lớn nhất so với
+        <code>invalidateQueries</code>, và là lỗi hay gặp nhất. Cần khớp tiền tố thì dùng
+        <code>setQueriesData</code>.</li>
+      <li><strong>Không sửa trực tiếp <code>prev</code>.</strong> React so sánh bằng tham chiếu;
+        <code>prev.status = 'DONE'</code> rồi <code>return prev</code> thì màn hình không vẽ lại.</li>
+      <li><strong><code>prev</code> có thể là <code>undefined</code></strong> — nếu ô đó chưa từng tải
+        hoặc đã bị <code>gcTime</code> dọn. Không kiểm tra là nổ.</li>
+    </ul>
+
+    <h4>So sánh hai đường đi</h4>
+    <figure class="dg">
+      <svg viewBox="0 0 640 190" role="img" aria-label="So sánh hai đường sau khi mutation thành công: invalidateQueries phải đi qua một chặng gọi API còn setQueryData ghi thẳng vào cache">
+        <defs>
+          <marker id="ar7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+          <marker id="ar7b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--ok)"/></marker>
+        </defs>
+
+        <rect x="0" y="72" width="118" height="42" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="59" y="92" font-size="10.5" font-family="monospace" fill="currentColor" text-anchor="middle">mutation</text>
+        <text x="59" y="105" font-size="10.5" font-family="monospace" fill="currentColor" text-anchor="middle">thành công</text>
+
+        <line x1="118" y1="86" x2="160" y2="40" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar7)"/>
+        <line x1="118" y1="100" x2="160" y2="146" stroke="var(--ok)" stroke-width="1.3" marker-end="url(#ar7b)"/>
+
+        <rect x="164" y="20" width="146" height="34" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="237" y="41" font-size="10.5" font-family="monospace" fill="currentColor" text-anchor="middle">invalidateQueries</text>
+        <line x1="310" y1="37" x2="352" y2="37" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar7)"/>
+
+        <rect x="356" y="20" width="112" height="34" rx="6" fill="none" stroke="var(--bad)" stroke-width="1.6"/>
+        <text x="412" y="41" font-size="10.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">GỌI API</text>
+        <text x="412" y="12" font-size="9.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">~200ms</text>
+        <line x1="468" y1="37" x2="510" y2="37" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar7)"/>
+
+        <rect x="164" y="128" width="146" height="34" rx="6" fill="none" stroke="var(--ok)" stroke-width="1.4"/>
+        <text x="237" y="149" font-size="10.5" font-family="monospace" fill="var(--ok)" text-anchor="middle">setQueryData</text>
+        <line x1="310" y1="145" x2="510" y2="145" stroke="var(--ok)" stroke-width="1.3" marker-end="url(#ar7b)"/>
+        <text x="410" y="139" font-size="9.5" font-family="monospace" fill="var(--ok)" text-anchor="middle">0ms — không qua mạng</text>
+
+        <rect x="514" y="72" width="118" height="42" rx="7" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="573" y="92" font-size="10.5" font-family="monospace" fill="var(--accent)" text-anchor="middle">ghi cache</text>
+        <text x="573" y="105" font-size="10.5" font-family="monospace" fill="var(--accent)" text-anchor="middle">→ vẽ lại</text>
+
+        <line x1="510" y1="37" x2="560" y2="70" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar7)"/>
+        <line x1="510" y1="145" x2="560" y2="114" stroke="var(--ok)" stroke-width="1.3" marker-end="url(#ar7b)"/>
+      </svg>
+      <figcaption>Khác biệt duy nhất giữa hai đường là chặng gọi API. Đổi lại tốc độ, bạn nhận trách nhiệm đoán đúng thứ server sẽ trả về.</figcaption>
+    </figure>
+
+    <div class="tbl-wrap"><table>
+      <tr><th></th><th>invalidateQueries</th><th>setQueryData</th></tr>
+      <tr><td>Gọi mạng</td><td>Có</td><td>Không</td></tr>
+      <tr><td>Khớp khoá</td><td><strong>Tiền tố</strong></td><td><strong>Chính xác</strong></td></tr>
+      <tr><td>Nguồn sự thật</td><td>Server</td><td>Bạn tự đoán</td></tr>
+      <tr><td>Xử lý "bản ghi rơi khỏi bộ lọc"</td><td>Có</td><td><strong>Không</strong></td></tr>
+      <tr><td>Tổng số trang đổi theo</td><td>Có</td><td><strong>Không</strong></td></tr>
+      <tr><td>Rủi ro cache lệch server</td><td>Không</td><td>Có</td></tr>
+    </table></div>
+
+    <h4>Nó làm dữ liệu tươi trở lại</h4>
+    <p><code>setQueryData</code> cập nhật cả <strong>mốc thời gian</strong>, nên đồng hồ <code>staleTime</code>
+    chạy lại từ đầu. Lợi: không bị gọi lại ngay sau khi vừa ghi. Hại: <strong>ghi sai thì Query tin đó là
+    dữ liệu mới nhất</strong> và không đi kiểm tra lại cho tới hết <code>staleTime</code>.</p>
+
+    <h4>Ba việc nó thật sự hữu ích</h4>
+    <p><strong>a) Nhận response của mutation, khỏi gọi lại.</strong> BE thường trả về bản ghi sau khi cập nhật —
+    vứt đi rồi gọi <code>GET</code> lại là phí một vòng mạng.</p>
+    <pre><code>onSuccess: (updated) =&gt; {
+  qc.setQueryData(['orders','detail', updated.id], updated);  // chi tiết: ghi tay
+  qc.invalidateQueries({ queryKey: ['orders','list'] });      // danh sách: phải chụp lại
+}</code></pre>
+    <p>Để ý cách phối: <strong>chi tiết ghi tay, danh sách invalidate</strong> — vì đơn đó có thể phải rời
+    khỏi danh sách đang lọc, thứ mà ghi tay không xử lý được.</p>
+
+    <p><strong>b) Mồi sẵn trang chi tiết từ danh sách.</strong> Bấm vào một dòng, trang chi tiết hiện ra
+    không có spinner vì cache đã có sẵn.</p>
+    <pre><code>function openOrder(order: Order) {
+  qc.setQueryData(['orders','detail', order.id], order);
+  navigate(ROUTES.ORDER_DETAIL(order.id));
+}</code></pre>
+    <div class="flag"><p>Chỉ làm được nếu <strong>DTO của danh sách và của chi tiết cùng hình dạng</strong>.
+    Nếu danh sách trả ít trường hơn (thường là vậy), người dùng thấy màn hình thiếu dữ liệu nhấp nháy rồi mới đầy.
+    Lúc đó thà chịu spinner.</p></div>
+
+    <p><strong>c) Optimistic update</strong> — ghi trước khi request đi, hỏng thì hoàn lại.</p>
+
+    <h4>Quy tắc chọn</h4>
+    <div class="script">
+      <p><strong>Bản ghi có thể đổi chỗ trong tập kết quả không?</strong></p>
+      <p>Có → <code>invalidateQueries</code>. Không → <code>setQueryData</code> được.</p>
+    </div>
+    <p>Khi phân vân, chọn <code>invalidateQueries</code>: tốn một request nhưng <strong>không bao giờ nói dối</strong>.
+    Đó cũng là lý do code hiện tại của dự án dùng invalidate ở mọi chỗ — lựa chọn mặc định đúng.</p>
+  `,
+  followups: [
+    { q: 'Vì sao <code>setQueryData</code> khớp chính xác còn <code>invalidateQueries</code> khớp tiền tố?',
+      a: '<p>Vì hai việc khác nhau về bản chất. <strong>Đánh dấu cũ</strong> thì áp cho cả nhóm được — "mọi danh sách đơn đều đáng nghi" là một câu có nghĩa. Còn <strong>ghi dữ liệu</strong> thì phải biết chính xác ghi cái gì vào đâu — không thể ghi cùng một mảng vào mọi trang và mọi bộ lọc.</p><p><code>setQueriesData</code> tồn tại cho trường hợp bạn muốn <em>duyệt</em> nhiều ô và sửa từng ô theo hàm — vẫn là ghi từng ô một, chỉ là gom vòng lặp lại.</p>' },
+    { q: 'Ghi sai vào cache thì bao giờ mới tự chữa?',
+      a: '<p>Khi có cớ gọi lại: hết <code>staleTime</code> rồi mount lại / quay lại tab / có mạng lại, hoặc bạn <code>invalidateQueries</code>. Nếu app đặt <code>staleTime</code> dài và tắt <code>refetchOnWindowFocus</code> thì có thể <strong>sai rất lâu</strong>.</p><p>Đây là lý do <code>setQueryData</code> nên dùng với dữ liệu server vừa trả về (chắc chắn đúng), chứ không phải với giá trị bạn tự dựng ở FE.</p>' },
+    { q: 'Có cách nào đọc dữ liệu đang nằm trong cache không?',
+      a: '<p><code>qc.getQueryData(key)</code> — cùng luật khớp chính xác. Hay dùng trong <code>onMutate</code> của optimistic update: lưu lại giá trị cũ để nếu request hỏng thì <code>setQueryData</code> ghi trả về như cũ.</p>' },
+    { q: 'Mồi trang chi tiết từ danh sách rồi, Query có gọi API nữa không?',
+      a: '<p>Có hoặc không, tuỳ <code>staleTime</code>. Vì <code>setQueryData</code> làm dữ liệu tươi lại, nên trong khoảng <code>staleTime</code> nó sẽ <strong>không</strong> gọi. Hết thì mount sẽ gọi ngầm để lấy bản đầy đủ.</p><p>Thực tế đây là hành vi mong muốn: hiện ngay bản rút gọn, rồi âm thầm thay bằng bản đầy đủ.</p>' },
+  ],
+},
+
+{
+  id: 'fe-06',
+  section: 'fe',
+  topic: 'TanStack Query',
+  level: 'khó',
+  multi: true,
+  q: 'Dev viết optimistic update cho nút "đánh dấu đã đọc" nhưng <strong>bỏ dòng <code>await qc.cancelQueries(...)</code></strong> trong <code>onMutate</code>. Hậu quả nào có thể xảy ra?',
+  code: `onMutate: async (id) => {
+  // thiếu: await qc.cancelQueries({ queryKey: ['notifications','list'] });
+  const prev = qc.getQueryData(['notifications','list']);
+  qc.setQueryData(['notifications','list'], (old) =>
+    old?.map((n) => (n.id === id ? { ...n, read: true } : n)));
+  return { prev };
+},`,
+  options: [
+    { id: 'a', text: 'Một refetch đang bay dở về muộn và <strong>đè lên</strong> bản ghi lạc quan' },
+    { id: 'b', text: 'Người dùng thấy trạng thái <strong>nhảy qua nhảy lại</strong>: đã đọc → chưa đọc → đã đọc' },
+    { id: 'c', text: 'Bug rất khó tái hiện, vì phụ thuộc có refetch nào đang bay hay không' },
+    { id: 'd', text: 'Đường lùi trong <code>onError</code> ngừng hoạt động' },
+    { id: 'e', text: 'Mutation sẽ không bao giờ được gửi đi' },
+  ],
+  correct: ['a', 'b', 'c'],
+  why: `
+    <p><strong>d</strong> và <strong>e</strong> sai — <code>onError</code> vẫn chạy bình thường và request vẫn bay.
+    Thiếu <code>cancelQueries</code> chỉ gây ra <em>một</em> vấn đề, nhưng là vấn đề khó chịu nhất: có kẻ khác đè lên
+    thứ bạn vừa ghi.</p>
+
+    <h4>Optimistic update là gì</h4>
+    <div class="script">
+      <p><strong>Đổi UI ngay lập tức, coi như sẽ thành công. Nếu hỏng thì lùi lại.</strong></p>
+      <p>"Optimistic" là vì thế — bạn <em>lạc quan</em> rằng request sẽ thành công.</p>
+    </div>
+
+    <figure class="dg">
+      <svg viewBox="0 0 640 200" role="img" aria-label="So sánh luồng thường và luồng lạc quan: luồng thường bắt người dùng chờ request xong mới đổi giao diện, luồng lạc quan đổi ngay rồi mới xác nhận hoặc lùi">
+        <defs>
+          <marker id="ar8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+          <marker id="ar8g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--ok)"/></marker>
+          <marker id="ar8b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--bad)"/></marker>
+        </defs>
+
+        <text x="0" y="12" font-size="10.5" font-family="monospace" fill="currentColor" letter-spacing="1">THƯỜNG</text>
+        <circle cx="16" cy="42" r="5" fill="currentColor"/>
+        <text x="16" y="66" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle">bấm</text>
+        <line x1="24" y1="42" x2="300" y2="42" stroke="currentColor" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#ar8)"/>
+        <text x="165" y="34" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle">chờ 300ms — nút trơ ra</text>
+        <rect x="308" y="28" width="104" height="28" rx="5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="360" y="47" font-size="10.5" font-family="monospace" fill="currentColor" text-anchor="middle">UI đổi</text>
+
+        <line x1="0" y1="88" x2="640" y2="88" stroke="currentColor" stroke-width="1" opacity=".18"/>
+
+        <text x="0" y="112" font-size="10.5" font-family="monospace" fill="var(--ok)" letter-spacing="1">LẠC QUAN</text>
+        <circle cx="16" cy="140" r="5" fill="currentColor"/>
+        <text x="16" y="164" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle">bấm</text>
+        <line x1="24" y1="140" x2="56" y2="140" stroke="var(--ok)" stroke-width="1.4" marker-end="url(#ar8g)"/>
+        <rect x="62" y="126" width="104" height="28" rx="5" fill="none" stroke="var(--ok)" stroke-width="1.5"/>
+        <text x="114" y="145" font-size="10.5" font-family="monospace" fill="var(--ok)" text-anchor="middle">UI đổi NGAY</text>
+
+        <line x1="166" y1="140" x2="300" y2="140" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 4"/>
+        <text x="233" y="133" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle">300ms ở nền</text>
+
+        <line x1="300" y1="140" x2="352" y2="120" stroke="var(--ok)" stroke-width="1.4" marker-end="url(#ar8g)"/>
+        <rect x="358" y="104" width="200" height="26" rx="5" fill="none" stroke="var(--ok)" stroke-width="1.4"/>
+        <text x="458" y="122" font-size="10" font-family="monospace" fill="var(--ok)" text-anchor="middle">đúng → giữ, không thấy gì</text>
+
+        <line x1="300" y1="140" x2="352" y2="162" stroke="var(--bad)" stroke-width="1.4" marker-end="url(#ar8b)"/>
+        <rect x="358" y="150" width="200" height="26" rx="5" fill="none" stroke="var(--bad)" stroke-width="1.4"/>
+        <text x="458" y="168" font-size="10" font-family="monospace" fill="var(--bad)" text-anchor="middle">hỏng → lùi + báo lỗi</text>
+      </svg>
+      <figcaption>Trong trường hợp thành công — tức đại đa số — người dùng không hề thấy có chuyện gì xảy ra ở nền. Đó mới là mục tiêu.</figcaption>
+    </figure>
+
+    <h4>Bốn bước, không thiếu bước nào</h4>
+    <pre><code>useMutation({
+  mutationFn: (id) =&gt; notificationApi.markRead(id),
+
+  // ① TRƯỚC khi request bay đi
+  onMutate: async (id) =&gt; {
+    await qc.cancelQueries({ queryKey: ['notifications','list'] });
+    const prev = qc.getQueryData(['notifications','list']);
+    qc.setQueryData(['notifications','list'], (old) =&gt;
+      old?.map((n) =&gt; (n.id === id ? { ...n, read: true } : n)));
+    return { prev };                       // đưa sang onError
+  },
+
+  // ② hỏng — lùi về ảnh đã chụp
+  onError: (_err, _id, ctx) =&gt; {
+    qc.setQueryData(['notifications','list'], ctx?.prev);
+  },
+
+  // ③ dù đúng hay hỏng — đối chiếu lại với server
+  onSettled: () =&gt; {
+    qc.invalidateQueries({ queryKey: ['notifications','list'] });
+  },
+});</code></pre>
+
+    <h4>Vì sao thiếu cancelQueries là hỏng</h4>
+    <pre><code>0ms    một refetch đang bay dở (do focus tab, do mount...)
+10ms   bạn setQueryData bản lạc quan   → UI hiện "đã đọc"
+250ms  refetch kia về, mang dữ liệu CŨ → đè lên → UI nhảy về "chưa đọc"
+400ms  mutation thành công
+500ms  onSettled invalidate → gọi lại  → UI về "đã đọc"</code></pre>
+    <p>Người dùng thấy trạng thái <strong>nhảy hai lần</strong>. Và vì nó chỉ xảy ra khi tình cờ có refetch đang bay,
+    bạn sẽ không tái hiện được khi ngồi debug.</p>
+    <div class="flag"><p>Nhớ <code>await</code>. Không await thì bạn không thật sự chờ nó huỷ xong,
+    và dòng code coi như không có tác dụng.</p></div>
+
+    <p><strong>Bước ③ cũng đừng bỏ.</strong> Kể cả khi thành công, bản bạn tự vẽ có thể khác bản server:
+    server có thể set thêm <code>readAt</code>, đổi thứ tự, cập nhật bộ đếm. Invalidate ở cuối là để
+    đối chiếu lại với sự thật.</p>
+
+    <h4>Khi nào nên, khi nào tuyệt đối không</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th></th><th>Điều kiện</th></tr>
+      <tr><td><strong>Nên</strong></td><td>Thao tác <strong>lặp nhiều</strong>, hậu quả <strong>nhẹ</strong>, kết quả <strong>đoán được chắc chắn</strong></td></tr>
+      <tr><td><strong>Không</strong></td><td>Server tính ra thứ bạn không đoán được · hỏng là chuyện thường · liên quan tiền · bản ghi có thể rơi khỏi bộ lọc</td></tr>
+    </table></div>
+    <p>Áp vào dự án Marketplace:</p>
+    <ul>
+      <li><strong>Hợp</strong> — đánh dấu thông báo đã đọc. Kết quả chắc chắn là <code>read: true</code>,
+      hỏng cũng chẳng sao, người dùng bấm liên tục.</li>
+      <li><strong>Không hợp — thợ nhận đơn (claim).</strong> BE có bảo vệ chống hai thợ nhận cùng lúc, nghĩa là
+      <strong>thất bại không phải chuyện hiếm, nó là tình huống được thiết kế sẵn</strong>. Vẽ "Đã nhận đơn!"
+      rồi 300ms sau giật lại kèm báo lỗi thì tệ hơn hẳn để nút quay 300ms rồi báo kết quả thật.</li>
+      <li><strong>Không hợp — ví tiền.</strong> Đừng bao giờ vẽ số dư mình đoán. Sai một nhịp cũng đủ mất
+      niềm tin, và người dùng sẽ chụp màn hình.</li>
+    </ul>
+
+    <h4>Cái giá phải trả</h4>
+    <ul>
+      <li>Từ <strong>1 dòng</strong> <code>invalidateQueries</code> thành <strong>~20 dòng</strong> với 3 móc và một đường lùi</li>
+      <li>Đường lùi là <strong>đường hiếm chạy nhất</strong>, nên cũng là đường <strong>hay sai nhất</strong> mà không ai phát hiện</li>
+      <li>Bạn đang <strong>nhân đôi logic của server</strong> ở FE — server đổi luật mà FE không đổi theo là hai bên lệch nhau</li>
+      <li>Rất khó test cho đúng</li>
+    </ul>
+    <div class="flag"><p><strong>Mặc định dùng <code>invalidateQueries</code>.</strong> Chỉ nâng lên optimistic ở đúng
+    vài chỗ mà độ trễ thật sự làm phiền. Người phỏng vấn muốn nghe bạn biết nó <em>tốn gì</em>,
+    chứ không phải bạn biết gõ nó.</p></div>
+
+    <h4>Câu chốt khi phỏng vấn</h4>
+    <div class="script">
+      <p>"Optimistic update là ghi trước vào cache rồi mới gửi request, hỏng thì lùi. Bốn bước:
+      <code>cancelQueries</code> để không có refetch nào đè lên, <code>getQueryData</code> chụp lại ảnh cũ,
+      <code>setQueryData</code> ghi bản lạc quan, và <code>onSettled</code> invalidate để đối chiếu lại với server.</p>
+      <p>Tôi chỉ dùng cho thao tác lặp nhiều và hậu quả nhẹ. Với chỗ mà thất bại là tình huống được thiết kế sẵn —
+      như tranh nhận đơn — tôi để nút chờ thật, vì giật lại còn tệ hơn chờ."</p>
+    </div>
+  `,
+  followups: [
+    { q: 'Người dùng bấm liên tục 5 lần thì 5 lần optimistic chồng lên nhau ra sao?',
+      a: '<p>Mỗi lần <code>onMutate</code> chụp một <code>prev</code> riêng — và <code>prev</code> của lần thứ 2 <strong>đã chứa bản lạc quan của lần 1</strong>. Nếu lần 1 hỏng còn lần 2 thành công, đường lùi sẽ ghi đè lộn xộn.</p><p>Cách xử lý: chặn nút khi <code>isPending</code>, hoặc dùng <code>onSettled</code> chỉ invalidate khi không còn mutation nào đang chạy (<code>qc.isMutating() === 1</code>).</p>' },
+    { q: 'Vì sao <code>onMutate</code> phải <code>return</code> giá trị chứ không lưu vào biến ngoài?',
+      a: '<p>Vì có thể có <strong>nhiều mutation chạy song song</strong>. Biến ngoài là dùng chung — cái sau ghi đè cái trước, và đường lùi sẽ lùi về sai chỗ.</p><p>Giá trị <code>return</code> trở thành <code>context</code> riêng cho <em>đúng lần gọi đó</em>, truyền vào <code>onError</code> và <code>onSettled</code> ở tham số thứ ba.</p>' },
+    { q: 'Optimistic update khác gì so với chỉ gọi <code>setQueryData</code> trong <code>onSuccess</code>?',
+      a: '<p>Khác ở <strong>thời điểm</strong>. <code>onSuccess</code> chạy <em>sau khi</em> server trả lời — người dùng vẫn phải chờ, chỉ là tiết kiệm được một vòng gọi lại. Optimistic ghi <em>trước khi</em> request bay đi, nên người dùng không chờ gì cả.</p><p>Đổi lại, <code>onSuccess</code> ghi dữ liệu <strong>thật</strong> từ server, còn optimistic ghi dữ liệu bạn <strong>đoán</strong>.</p>' },
+    { q: 'Nếu mất mạng giữa chừng thì sao?',
+      a: '<p><code>onError</code> chạy và lùi lại — người dùng thấy trạng thái trở về cũ kèm toast lỗi. Đó là hành vi đúng.</p><p>Muốn tử tế hơn thì bật hàng đợi offline của Query (<code>onlineManager</code> + persist mutation) để thao tác tự gửi lại khi có mạng. Nhưng đó là mức phức tạp khác hẳn, chỉ đáng làm cho app thật sự cần dùng offline.</p>' },
+  ],
+},
+
+/* ---------------------------------------------------------- BE */
+{
+  id: 'be-01',
+  section: 'be',
+  topic: 'RBAC',
+  level: 'trung bình',
+  multi: false,
+  q: 'Mô hình phân quyền của dự án là <code>User → Role → Permissions</code>, cộng thêm <strong>user override</strong> theo từng người (GRANT / DENY). Người dùng A có vai trò <code>STAFF</code> (kèm <code>order:read</code>, <code>order:update</code>), được GRANT thêm <code>report:export</code>, và bị DENY <code>order:update</code>. Quyền cuối cùng của A là gì?',
+  options: [
+    { id: 'a', text: '<code>order:read</code>, <code>order:update</code>, <code>report:export</code>' },
+    { id: 'b', text: '<code>order:read</code>, <code>report:export</code>' },
+    { id: 'c', text: '<code>order:read</code>, <code>order:update</code>' },
+    { id: 'd', text: 'Chỉ <code>report:export</code> — override thay thế toàn bộ quyền của vai trò' },
+  ],
+  correct: ['b'],
+  why: `
+    <p>Công thức: <code>role_permissions ∪ (user GRANT) − (user DENY)</code>. Điểm mấu chốt là
+    <strong>DENY thắng</strong>, và nó trừ ở bước cuối cùng nên trừ được cả quyền vừa GRANT.</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 190" role="img" aria-label="Quyền hiệu lực bằng quyền của vai trò hợp với GRANT rồi trừ đi DENY, DENY được áp dụng sau cùng nên luôn thắng">
+        <defs>
+          <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        </defs>
+        <rect x="10" y="30" width="150" height="58" rx="8" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="85" y="52" font-size="11" font-family="monospace" fill="currentColor" text-anchor="middle">role STAFF</text>
+        <text x="85" y="68" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle" opacity=".75">order:read</text>
+        <text x="85" y="81" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle" opacity=".75">order:update</text>
+
+        <text x="176" y="63" font-size="18" font-family="monospace" fill="currentColor" text-anchor="middle">∪</text>
+
+        <rect x="192" y="30" width="150" height="58" rx="8" fill="none" stroke="var(--ok)" stroke-width="1.4"/>
+        <text x="267" y="52" font-size="11" font-family="monospace" fill="var(--ok)" text-anchor="middle">GRANT</text>
+        <text x="267" y="70" font-size="10" font-family="monospace" fill="var(--ok)" text-anchor="middle">report:export</text>
+
+        <text x="358" y="63" font-size="18" font-family="monospace" fill="currentColor" text-anchor="middle">−</text>
+
+        <rect x="374" y="30" width="150" height="58" rx="8" fill="none" stroke="var(--bad)" stroke-width="1.4"/>
+        <text x="449" y="52" font-size="11" font-family="monospace" fill="var(--bad)" text-anchor="middle">DENY</text>
+        <text x="449" y="70" font-size="10" font-family="monospace" fill="var(--bad)" text-anchor="middle">order:update</text>
+
+        <line x1="267" y1="98" x2="267" y2="122" stroke="currentColor" stroke-width="1.2" opacity=".5" marker-end="url(#ar4)"/>
+
+        <rect x="150" y="128" width="235" height="48" rx="8" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <text x="267" y="148" font-size="11" font-family="monospace" fill="var(--accent)" text-anchor="middle">quyền hiệu lực</text>
+        <text x="267" y="165" font-size="10.5" font-family="monospace" fill="var(--accent)" text-anchor="middle">order:read · report:export</text>
+      </svg>
+      <figcaption>DENY áp dụng sau cùng nên nó thắng cả quyền của vai trò lẫn quyền vừa được GRANT riêng.</figcaption>
+    </figure>
+
+    <div class="flag"><p><strong>Vì sao DENY phải thắng:</strong> nó là công cụ <em>thu hồi</em>. Nếu GRANT thắng, bạn không có cách nào chặn một người cụ thể mà không phải tách vai trò mới cho riêng người đó — vài tháng là đẻ ra một rừng vai trò dùng một lần.</p></div>
+  `,
+  followups: [
+    { q: 'Vì sao quyền phải đặt tên <code>resource:action</code> chữ thường, cấm trộn <code>ORDER_READ</code> hay <code>order.read</code>?',
+      a: '<p>Vì quyền là <strong>chuỗi so sánh chính xác</strong> nằm rải ở cả BE (guard) lẫn FE (ẩn/hiện UI) lẫn dữ liệu trong DB. Trộn nhiều kiểu viết thì <code>order:read</code> và <code>ORDER_READ</code> thành hai quyền khác nhau — không ai báo lỗi, chỉ là màn hình trống hoặc thủng quyền.</p><p>Thêm nữa, dạng <code>resource:action</code> cho phép về sau mở rộng tiền tố (<code>order:*</code>) mà không phải viết lại toàn bộ.</p>' },
+    { q: 'Tính quyền hiệu lực mỗi request có tốn không? Cache thế nào?',
+      a: '<p>Có — nó là vài lần join. Cache vào Redis theo <code>userId</code>, và <strong>xoá cache khi</strong>: đổi vai trò của user, sửa quyền của vai trò, hoặc thêm/bớt override.</p><p>Cạm bẫy hay bị hỏi: sửa quyền của một <em>vai trò</em> phải xoá cache của <strong>mọi user</strong> mang vai trò đó, không chỉ user đang thao tác.</p>' },
+    { q: 'FE đã ẩn nút rồi, BE có cần kiểm tra lại không?',
+      a: '<p>Bắt buộc có. FE chỉ làm <strong>trải nghiệm</strong> — không hiện thứ người ta không dùng được. Bảo mật thật nằm hoàn toàn ở BE, vì người dùng gọi thẳng API được, không cần đi qua giao diện của bạn.</p>' },
+  ],
+},
+
+{
+  id: 'be-02',
+  section: 'be',
+  topic: 'Bảo mật · Ownership',
+  level: 'khó',
+  multi: false,
+  q: 'Endpoint <code>GET /orders/:id</code> đã gắn <code>@RequirePermission(\'order:read\')</code>. Khách hàng B có quyền <code>order:read</code> (ai cũng cần để xem đơn của mình) và gọi endpoint đó với <code>id</code> của một đơn <strong>thuộc về người khác</strong>. Điều gì xảy ra?',
+  options: [
+    { id: 'a', text: 'Bị chặn — guard đã kiểm tra quyền rồi nên an toàn' },
+    { id: 'b', text: 'Trả về đơn của người khác. Guard chỉ trả lời "được xem đơn nói chung", không trả lời "được xem <em>đơn này</em>"' },
+    { id: 'c', text: 'Prisma tự lọc theo user đang đăng nhập' },
+    { id: 'd', text: 'Bị chặn nếu bật CORS đúng' },
+  ],
+  correct: ['b'],
+  why: `
+    <p>Đây là <strong>IDOR</strong> (Insecure Direct Object Reference) — lỗi bảo mật phổ biến nhất trong ứng dụng
+    có phân quyền, và là câu hỏi gần như chắc chắn có trong vòng phỏng vấn BE.</p>
+
+    <h4>Hai câu hỏi khác nhau, cần hai lớp kiểm tra khác nhau</h4>
+    <figure class="dg">
+      <svg viewBox="0 0 620 180" role="img" aria-label="Request đi qua guard kiểm tra quyền rồi tới service kiểm tra quyền sở hữu; thiếu lớp thứ hai thì rò rỉ dữ liệu">
+        <defs>
+          <marker id="ar5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+          <marker id="ar5b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--bad)"/></marker>
+        </defs>
+        <rect x="0" y="52" width="92" height="42" rx="7" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="46" y="78" font-size="11" font-family="monospace" fill="currentColor" text-anchor="middle">request</text>
+
+        <line x1="92" y1="73" x2="140" y2="73" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar5)"/>
+
+        <rect x="146" y="42" width="150" height="62" rx="7" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="221" y="62" font-size="11" font-family="monospace" fill="var(--accent)" text-anchor="middle">Guard</text>
+        <text x="221" y="79" font-size="10" font-family="monospace" fill="var(--accent)" text-anchor="middle">"được xem đơn</text>
+        <text x="221" y="92" font-size="10" font-family="monospace" fill="var(--accent)" text-anchor="middle">nói chung?"</text>
+
+        <line x1="296" y1="73" x2="344" y2="73" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar5)"/>
+
+        <rect x="350" y="42" width="160" height="62" rx="7" fill="none" stroke="var(--ok)" stroke-width="1.5"/>
+        <text x="430" y="62" font-size="11" font-family="monospace" fill="var(--ok)" text-anchor="middle">Service</text>
+        <text x="430" y="79" font-size="10" font-family="monospace" fill="var(--ok)" text-anchor="middle">"đơn NÀY có phải</text>
+        <text x="430" y="92" font-size="10" font-family="monospace" fill="var(--ok)" text-anchor="middle">của anh không?"</text>
+
+        <line x1="510" y1="73" x2="558" y2="73" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar5)"/>
+        <text x="566" y="77" font-size="11" font-family="monospace" fill="currentColor">DB</text>
+
+        <line x1="296" y1="122" x2="296" y2="146" stroke="var(--bad)" stroke-width="1.3" marker-end="url(#ar5b)"/>
+        <text x="306" y="150" font-size="11" font-family="monospace" fill="var(--bad)">bỏ lớp này = rò rỉ đơn của người khác</text>
+      </svg>
+      <figcaption>Guard lọc theo <em>loại hành động</em>. Quyền sở hữu gắn với <em>từng bản ghi</em> nên chỉ kiểm được ở service, sau khi đã biết bản ghi đó là gì.</figcaption>
+    </figure>
+
+    <h4>Cách kiểm tra đúng</h4>
+    <pre><code>const order = await this.prisma.order.findUnique({ where: { id } });
+if (!order) throw new NotFoundException('NOT_FOUND');
+
+const isOwner = order.customerId === user.id || order.repairmanId === user.id;
+const isAdmin = user.permissions.includes('order:read:any');
+if (!isOwner && !isAdmin) throw new ForbiddenException('NOT_YOUR_ORDER');</code></pre>
+    <p><strong>c</strong> sai hoàn toàn: Prisma là ORM, nó chạy đúng câu lệnh bạn viết chứ không biết gì về người đăng nhập.
+    <strong>d</strong> cũng sai: CORS chỉ ràng buộc trình duyệt, gọi bằng <code>curl</code> hay Postman thì CORS vô nghĩa.</p>
+  `,
+  followups: [
+    { q: 'Nên trả 403 hay 404 khi đơn tồn tại nhưng không phải của người gọi?',
+      a: '<p>Có đánh đổi thật, nói được cả hai phía mới ghi điểm:</p><ul><li><strong>403</strong> trung thực, dễ debug — nhưng <em>để lộ</em> rằng id đó có tồn tại. Kẻ tấn công quét id sẽ đếm được số đơn trong hệ thống.</li><li><strong>404</strong> kín hơn, không rò rỉ sự tồn tại — nhưng khó hỗ trợ người dùng thật khi họ báo "tôi mở không được".</li></ul><p>Thực dụng: dữ liệu nhạy cảm hoặc id đoán được (số tăng dần) thì 404. Dữ liệu ít nhạy cảm và id là UUID thì 403 cho dễ vận hành.</p>' },
+    { q: 'Làm sao để không phải nhớ viết đoạn kiểm tra ownership ở mọi service?',
+      a: '<p>Đừng trông vào trí nhớ. Vài cách, mạnh dần:</p><ul><li>Hàm dùng chung <code>assertOwnership(entity, user)</code> — vẫn phải nhớ gọi.</li><li>Truy vấn <strong>luôn kèm điều kiện chủ sở hữu</strong> trong <code>where</code> thay vì lấy ra rồi mới so — không tìm thấy thì tự nhiên ra 404.</li><li>Row-Level Security ở Postgres — chặt nhất, DB tự chặn, nhưng phức tạp và khó debug.</li></ul>' },
+    { q: 'Vì sao tách <code>order:read</code> và <code>order:read:any</code> thay vì chỉ một quyền?',
+      a: '<p>Để phân biệt "xem đơn của tôi" với "xem đơn của bất kỳ ai". Gộp một quyền thì hoặc khách hàng xem được đơn người khác, hoặc admin không xem được đơn nào — không có đường ở giữa.</p>' },
+  ],
+},
+
+];
+
+/* ============================================================
+   ĐỘNG CƠ — lọc, đảo, chấm, lưu tiến độ
+   ============================================================ */
+
+const LS = 'lo-luyen-v1';
+const $ = (s, r = document) => r.querySelector(s);
+const LETTER = 'ABCDEF';
+const LEVELS = ['dễ', 'trung bình', 'khó'];
+
+const state = {
+  section: 'fe',
+  status: 'all',            // all | todo | ok | bad
+  topics: new Set(),        // rỗng = không lọc
+  levels: new Set(),
+  search: '',
+  shufQ: false,
+  shufO: false,
+  reveal: false,
+  idx: 0,
+  list: [],
+  picked: {},               // id -> Set
+  graded: {},               // id -> true | false
+};
+
+/* ---------------- lưu trữ ---------------- */
+function load() {
+  try {
+    const raw = localStorage.getItem(LS);
+    if (raw) Object.assign(state.graded, JSON.parse(raw).graded || {});
+  } catch (_) {}
+}
+function save() {
+  try { localStorage.setItem(LS, JSON.stringify({ graded: state.graded })); } catch (_) {}
+}
+
+/* ---------------- tiện ích ---------------- */
+function shuffle(a) {
+  const r = a.slice();
+  for (let i = r.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [r[i], r[j]] = [r[j], r[i]];
+  }
+  return r;
+}
+const same = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
+const strip = (h) => h.replace(/<[^>]*>/g, ' ');
+const fold = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd');
+
+function pickOf(id) {
+  if (!state.picked[id]) state.picked[id] = new Set();
+  return state.picked[id];
+}
+
+/* ---------------- lọc ---------------- */
+function inSection(q) { return state.section === 'all' || q.section === state.section; }
+
+function matchStatus(q) {
+  const g = state.graded[q.id];
+  if (state.status === 'todo') return g === undefined;
+  if (state.status === 'ok')   return g === true;
+  if (state.status === 'bad')  return g === false;
+  return true;
+}
+
+function matchSearch(q) {
+  if (!state.search) return true;
+  const hay = fold(strip(q.q) + ' ' + q.topic + ' ' + q.options.map((o) => strip(o.text)).join(' '));
+  return hay.includes(fold(state.search));
+}
+
+function build() {
+  let qs = BANK.filter((q) =>
+    inSection(q) &&
+    (state.topics.size === 0 || state.topics.has(q.topic)) &&
+    (state.levels.size === 0 || state.levels.has(q.level)) &&
+    matchStatus(q) &&
+    matchSearch(q)
+  );
+  if (state.shufQ) qs = shuffle(qs);
+  state.list = qs.map((q) => ({ ...q, options: state.shufO ? shuffle(q.options) : q.options }));
+  state.idx = Math.min(state.idx, Math.max(0, state.list.length - 1));
+}
+
+const anyFilter = () =>
+  state.topics.size || state.levels.size || state.status !== 'all' || state.search;
+
+/* ---------------- vẽ bộ lọc ---------------- */
+function renderChips() {
+  const pool = BANK.filter(inSection);
+
+  const topics = [...new Set(pool.map((q) => q.topic))].sort((a, b) => a.localeCompare(b, 'vi'));
+  const tw = $('#topicChips');
+  tw.innerHTML = '';
+  topics.forEach((t) => {
+    const n = pool.filter((q) => q.topic === t).length;
+    tw.appendChild(chip(t, n, state.topics, t));
+  });
+  if (!topics.length) tw.innerHTML = '<span class="empty">chưa có câu nào</span>';
+
+  const lw = $('#levelChips');
+  lw.innerHTML = '';
+  LEVELS.forEach((lv) => {
+    const n = pool.filter((q) => q.level === lv).length;
+    if (n) lw.appendChild(chip(lv, n, state.levels, lv));
+  });
+
+  const total = BANK.filter(inSection).length;
+  $('#fcount').textContent = state.list.length + ' / ' + total + ' câu';
+  $('#clearF').hidden = !anyFilter();
+}
+
+function chip(label, count, set, key) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'chipf';
+  b.setAttribute('aria-pressed', String(set.has(key)));
+  b.innerHTML = label + '<span class="n">' + count + '</span>';
+  b.addEventListener('click', () => {
+    set.has(key) ? set.delete(key) : set.add(key);
+    state.idx = 0;
+    build(); render();
+  });
+  return b;
+}
+
+/* ---------------- vẽ dải phiếu ---------------- */
+function renderRail() {
+  const rail = $('#rail');
+  rail.innerHTML = '';
+  state.list.forEach((q, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'bub';
+    b.textContent = i + 1;
+    b.title = q.topic + ' · ' + q.level;
+    if (i === state.idx && !state.reveal) b.dataset.now = '1';
+    if (q.id in state.graded) b.dataset.res = state.graded[q.id] ? 'ok' : 'bad';
+    b.addEventListener('click', () => {
+      state.reveal = false;
+      $('#reveal').setAttribute('aria-pressed', 'false');
+      state.idx = i;
+      render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    rail.appendChild(b);
+  });
+
+  const all = BANK.filter(inSection);
+  const done = all.filter((q) => q.id in state.graded).length;
+  const ok = all.filter((q) => state.graded[q.id] === true).length;
+  const pct = done ? Math.round((ok / done) * 100) : 0;
+
+  $('#tally').innerHTML =
+    '<div class="stat"><span class="k">đã làm</span><span class="v">' + done + '<small>/' + all.length + '</small></span></div>' +
+    '<div class="stat"><span class="k">đúng</span><span class="v ok">' + ok + '</span></div>' +
+    (done ? '<div class="meter"><i style="width:' + pct + '%"></i></div>' +
+            '<div class="stat"><span class="k">tỉ lệ</span><span class="v">' + pct + '<small>%</small></span></div>' : '');
+
+  $('#barfill').style.width = (all.length ? (done / all.length) * 100 : 0) + '%';
+}
+
+/* ---------------- vẽ một thẻ ---------------- */
+function card(q, n, forceOpen) {
+  const el = document.createElement('article');
+  el.className = 'card';
+  el.dataset.section = q.section;
+
+  const isGraded = forceOpen || q.id in state.graded;
+  const pick = pickOf(q.id);
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  meta.innerHTML =
+    '<span class="qno">' + String(n).padStart(2, '0') + '</span>' +
+    '<span class="chip sec">' + SECTIONS[q.section] + '</span>' +
+    '<span class="chip">' + q.topic + '</span>' +
+    '<span class="chip">' + q.level + '</span>' +
+    '<span class="rule-note">' + (q.multi ? 'chọn nhiều đáp án' : 'chọn một đáp án') + '</span>';
+  el.appendChild(meta);
+
+  const body = document.createElement('div');
+  body.className = 'body';
+
+  const qt = document.createElement('p');
+  qt.className = 'qtext';
+  qt.innerHTML = q.q;
+  body.appendChild(qt);
+
+  if (q.code) {
+    const pre = document.createElement('pre');
+    const c = document.createElement('code');
+    c.textContent = q.code;
+    pre.appendChild(c);
+    body.appendChild(pre);
+  }
+
+  const ul = document.createElement('ul');
+  ul.className = 'opts';
+  q.options.forEach((o, oi) => {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'opt';
+    btn.dataset.multi = q.multi ? '1' : '0';
+    btn.setAttribute('aria-pressed', pick.has(o.id) ? 'true' : 'false');
+    btn.disabled = isGraded;
+
+    let tail = '';
+    if (isGraded) {
+      const right = q.correct.includes(o.id);
+      const chose = pick.has(o.id);
+      if (chose && right)       { btn.dataset.mark = 'hit';   tail = '<span class="tail" data-t="hit">đúng</span>'; }
+      else if (chose && !right) { btn.dataset.mark = 'miss';  tail = '<span class="tail" data-t="miss">sai</span>'; }
+      else if (!chose && right) { btn.dataset.mark = 'ought'; tail = '<span class="tail" data-t="ought">bỏ sót</span>'; }
+    }
+
+    btn.innerHTML =
+      '<span class="mk" aria-hidden="true"><span>' + LETTER[oi] + '</span></span>' +
+      '<span class="otext">' + o.text + '</span>' + tail;
+
+    btn.addEventListener('click', () => {
+      if (q.multi) { pick.has(o.id) ? pick.delete(o.id) : pick.add(o.id); }
+      else { pick.clear(); pick.add(o.id); }
+      render();
+    });
+
+    li.appendChild(btn);
+    ul.appendChild(li);
+  });
+  body.appendChild(ul);
+
+  if (!isGraded) {
+    const acts = document.createElement('div');
+    acts.className = 'acts';
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'btn pri';
+    go.textContent = 'Kiểm tra';
+    go.disabled = pick.size === 0;
+    go.addEventListener('click', () => {
+      state.graded[q.id] = same([...pick], q.correct);
+      save(); render();
+    });
+    acts.appendChild(go);
+    const h = document.createElement('span');
+    h.className = 'hint';
+    h.textContent = 'phím A–' + LETTER[q.options.length - 1] + ' để chọn · Enter để kiểm tra';
+    acts.appendChild(h);
+    body.appendChild(acts);
+  } else {
+    const right = same([...pick], q.correct);
+    const keys = q.correct.map((c) => LETTER[q.options.findIndex((o) => o.id === c)]).sort().join(', ');
+
+    const v = document.createElement('div');
+    v.className = 'verdict';
+    v.dataset.v = right ? 'ok' : 'bad';
+    v.innerHTML = '<span class="sign" aria-hidden="true">' + (right ? '✓' : '✕') + '</span>' +
+      '<span>' + (right ? 'Chính xác — ' + keys : 'Chưa đúng. Đáp án: ' + keys) + '</span>';
+    body.appendChild(v);
+
+    const why = document.createElement('div');
+    why.className = 'why';
+    why.innerHTML = '<h3>Giải thích</h3>' + q.why;
+    body.appendChild(why);
+
+    if (q.followups && q.followups.length) {
+      const fu = document.createElement('div');
+      fu.className = 'fu';
+      fu.innerHTML = '<h3>Câu hỏi phụ thường bị đào tiếp</h3>' +
+        q.followups.map((f) =>
+          '<details class="fq"><summary><span class="chev" aria-hidden="true"></span><span>' +
+          f.q + '</span></summary><div class="ans">' + f.a + '</div></details>'
+        ).join('');
+      body.appendChild(fu);
+    }
+
+    if (!forceOpen) {
+      const again = document.createElement('div');
+      again.className = 'acts';
+      again.style.marginTop = '20px';
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn sec';
+      b.textContent = 'Làm lại câu này';
+      b.addEventListener('click', () => {
+        delete state.graded[q.id];
+        state.picked[q.id] = new Set();
+        save(); render();
+      });
+      again.appendChild(b);
+      body.appendChild(again);
+    }
+  }
+
+  el.appendChild(body);
+  return el;
+}
+
+/* ---------------- vẽ toàn trang ---------------- */
+function render() {
+  renderChips();
+  renderRail();
+
+  const stage = $('#stage');
+  stage.innerHTML = '';
+
+  if (!state.list.length) {
+    const why = anyFilter()
+      ? 'Không câu nào khớp bộ lọc hiện tại.'
+      : 'Phần này chưa có câu hỏi nào. Thêm vào mảng <code>BANK</code> theo mẫu ở cuối trang.';
+    stage.innerHTML = '<div class="card"><div class="body"><p class="qtext">' + why + '</p></div></div>';
+    return;
+  }
+
+  if (state.reveal) {
+    state.list.forEach((q, i) => stage.appendChild(card(q, i + 1, true)));
+    return;
+  }
+
+  stage.appendChild(card(state.list[state.idx], state.idx + 1, false));
+
+  const nav = document.createElement('div');
+  nav.className = 'nav';
+
+  const prev = document.createElement('button');
+  prev.type = 'button'; prev.className = 'btn sec'; prev.textContent = '← Câu trước';
+  prev.disabled = state.idx === 0;
+  prev.addEventListener('click', () => { state.idx--; render(); window.scrollTo({ top: 0 }); });
+
+  const next = document.createElement('button');
+  next.type = 'button'; next.className = 'btn sec'; next.textContent = 'Câu sau →';
+  next.disabled = state.idx >= state.list.length - 1;
+  next.addEventListener('click', () => { state.idx++; render(); window.scrollTo({ top: 0 }); });
+
+  const sp = document.createElement('span');
+  sp.className = 'spacer';
+  sp.textContent = (state.idx + 1) + ' / ' + state.list.length;
+
+  nav.append(prev, next, sp);
+  stage.appendChild(nav);
+}
+
+/* ---------------- gắn điều khiển ---------------- */
+function segment(attr, key, after) {
+  document.querySelectorAll('[' + attr + ']').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.getAttribute(attr) === state[key]));
+    b.addEventListener('click', () => {
+      state[key] = b.getAttribute(attr);
+      document.querySelectorAll('[' + attr + ']').forEach((x) =>
+        x.setAttribute('aria-pressed', String(x === b)));
+      state.idx = 0;
+      if (after) after();
+      build(); render();
+    });
+  });
+}
+segment('data-sec', 'section', () => { state.topics.clear(); });
+segment('data-st', 'status', null);
+
+function toggle(id, key, after) {
+  const b = $('#' + id);
+  b.addEventListener('click', () => {
+    state[key] = !state[key];
+    b.setAttribute('aria-pressed', String(state[key]));
+    if (after) after();
+    render();
+  });
+}
+toggle('shufQ', 'shufQ', () => { state.idx = 0; build(); });
+toggle('shufO', 'shufO', () => { build(); });
+toggle('reveal', 'reveal', null);
+
+let tmr;
+$('#qsearch').addEventListener('input', (e) => {
+  clearTimeout(tmr);
+  tmr = setTimeout(() => {
+    state.search = e.target.value.trim();
+    state.idx = 0;
+    build(); render();
+  }, 220);
+});
+
+$('#clearF').addEventListener('click', () => {
+  state.topics.clear();
+  state.levels.clear();
+  state.status = 'all';
+  state.search = '';
+  $('#qsearch').value = '';
+  document.querySelectorAll('[data-st]').forEach((x) =>
+    x.setAttribute('aria-pressed', String(x.getAttribute('data-st') === 'all')));
+  state.idx = 0;
+  build(); render();
+});
+
+$('#reset').addEventListener('click', () => {
+  state.graded = {};
+  state.picked = {};
+  state.idx = 0;
+  save(); build(); render();
+  window.scrollTo({ top: 0 });
+});
+
+/* ---------------- chuyển tiến độ giữa máy ---------------- */
+$('#doExport').addEventListener('click', () => {
+  $('#dump').value = btoa(unescape(encodeURIComponent(JSON.stringify(state.graded))));
+  $('#ioMsg').textContent = 'đã tạo chuỗi — chép đi';
+});
+$('#doImport').addEventListener('click', () => {
+  try {
+    const obj = JSON.parse(decodeURIComponent(escape(atob($('#dump').value.trim()))));
+    if (typeof obj !== 'object' || obj === null) throw new Error('sai định dạng');
+    state.graded = obj;
+    save(); build(); render();
+    $('#ioMsg').textContent = 'đã nạp ' + Object.keys(obj).length + ' câu';
+  } catch (_) {
+    $('#ioMsg').textContent = 'chuỗi không hợp lệ';
+  }
+});
+
+/* ---------------- bàn phím ---------------- */
+document.addEventListener('keydown', (e) => {
+  if (state.reveal || e.metaKey || e.ctrlKey || e.altKey) return;
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+  const q = state.list[state.idx];
+  if (!q) return;
+
+  const oi = LETTER.indexOf(e.key.toUpperCase());
+  if (oi >= 0 && oi < q.options.length && !(q.id in state.graded)) {
+    e.preventDefault();
+    const pick = pickOf(q.id);
+    const oid = q.options[oi].id;
+    if (q.multi) { pick.has(oid) ? pick.delete(oid) : pick.add(oid); }
+    else { pick.clear(); pick.add(oid); }
+    render();
+  } else if (e.key === 'Enter' && !(q.id in state.graded) && pickOf(q.id).size) {
+    e.preventDefault();
+    state.graded[q.id] = same([...pickOf(q.id)], q.correct);
+    save(); render();
+  } else if (e.key === 'ArrowRight' && state.idx < state.list.length - 1) {
+    state.idx++; render();
+  } else if (e.key === 'ArrowLeft' && state.idx > 0) {
+    state.idx--; render();
+  }
+});
+
+load();
+build();
+render();
+</script>
