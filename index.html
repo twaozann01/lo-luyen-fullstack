@@ -1751,6 +1751,130 @@ ids.filter(id =&gt; s.has(id))</code></pre>
   ],
 },
 
+{
+  id: 'fe-11',
+  section: 'fe',
+  topic: 'React core',
+  level: 'trung bình',
+  multi: true,
+  q: 'Danh sách đơn hàng có ô tick chọn ở mỗi dòng, dùng <code>key={index}</code>. Người dùng tick dòng thứ 3, rồi đổi bộ lọc sắp xếp khiến danh sách <strong>đảo thứ tự</strong>. Nhận định nào <strong>đúng</strong>?',
+  code: `{orders.map((o, i) => (
+  <OrderRow key={i} order={o} />
+))}`,
+  options: [
+    { id: 'a', text: 'Ô tick vẫn nằm ở <strong>dòng thứ 3</strong> — nhưng giờ là một đơn hoàn toàn khác' },
+    { id: 'b', text: 'React dùng <code>key</code> để đối chiếu phần tử cũ với mới; key là index thì nó đối chiếu theo <strong>vị trí</strong>, không theo dữ liệu' },
+    { id: 'c', text: 'Đổi sang <code>key={o.id}</code> là hết — state đi theo đúng đơn' },
+    { id: 'd', text: 'Dùng <code>key={Math.random()}</code> cho chắc chắn khác nhau' },
+    { id: 'e', text: 'Nếu danh sách <strong>không bao giờ</strong> đổi thứ tự, thêm hay xoá thì <code>key={index}</code> chấp nhận được' },
+  ],
+  correct: ['a', 'b', 'c', 'e'],
+  why: `
+    <p><strong>d</strong> sai và là một trong những lỗi tệ nhất: <code>Math.random()</code> cho key
+    <em>mới</em> ở <strong>mỗi lần render</strong>. React thấy toàn key lạ nên huỷ sạch mọi dòng cũ và
+    dựng lại từ đầu — mất hết state, mất tiêu điểm bàn phím, mất vị trí con trỏ trong ô nhập,
+    và chậm kinh khủng.</p>
+
+    <h4>key dùng để làm gì</h4>
+    <p>Giữa hai lần render, React có <strong>danh sách cũ</strong> và <strong>danh sách mới</strong>,
+    và phải trả lời: <em>phần tử nào ở bản mới ứng với phần tử nào ở bản cũ?</em></p>
+    <p>Nó không so nội dung — quá tốn. Nó dựng một bảng tra cứu theo <code>key</code>. Cùng key thì
+    coi là cùng một thứ, giữ nguyên component và state. Khác key thì huỷ cái cũ, dựng cái mới.</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 250" role="img" aria-label="Khi danh sach dao thu tu, key theo index lam state dinh vao vi tri con key theo id lam state di theo dung ban ghi">
+        <text x="0" y="12" font-size="10.5" font-family="monospace" fill="var(--bad)" letter-spacing="1">key = index</text>
+
+        <text x="0" y="36" font-size="10" font-family="monospace" fill="currentColor">trước</text>
+        <rect x="46" y="24" width="150" height="22" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="56" y="39" font-size="10" font-family="monospace" fill="currentColor">key 0 · đơn A</text>
+        <rect x="46" y="50" width="150" height="22" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="56" y="65" font-size="10" font-family="monospace" fill="currentColor">key 1 · đơn B</text>
+        <rect x="46" y="76" width="150" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <text x="56" y="91" font-size="10" font-family="monospace" fill="var(--accent)">key 2 · đơn C  ☑</text>
+
+        <line x1="206" y1="62" x2="252" y2="62" stroke="currentColor" stroke-width="1.2"/>
+        <text x="229" y="56" font-size="9.5" font-family="monospace" fill="currentColor" text-anchor="middle">đảo</text>
+
+        <text x="262" y="36" font-size="10" font-family="monospace" fill="currentColor">sau</text>
+        <rect x="300" y="24" width="150" height="22" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="310" y="39" font-size="10" font-family="monospace" fill="currentColor">key 0 · đơn C</text>
+        <rect x="300" y="50" width="150" height="22" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="310" y="65" font-size="10" font-family="monospace" fill="currentColor">key 1 · đơn B</text>
+        <rect x="300" y="76" width="150" height="22" rx="4" fill="none" stroke="var(--bad)" stroke-width="1.6"/>
+        <text x="310" y="91" font-size="10" font-family="monospace" fill="var(--bad)">key 2 · đơn A  ☑</text>
+        <text x="462" y="91" font-size="10" font-family="monospace" fill="var(--bad)">tick dính sai đơn</text>
+
+        <line x1="0" y1="122" x2="620" y2="122" stroke="currentColor" stroke-width="1" opacity=".2"/>
+
+        <text x="0" y="146" font-size="10.5" font-family="monospace" fill="var(--ok)" letter-spacing="1">key = o.id</text>
+
+        <text x="0" y="170" font-size="10" font-family="monospace" fill="currentColor">trước</text>
+        <rect x="46" y="158" width="150" height="22" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="56" y="173" font-size="10" font-family="monospace" fill="currentColor">key A · đơn A</text>
+        <rect x="46" y="184" width="150" height="22" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="56" y="199" font-size="10" font-family="monospace" fill="currentColor">key B · đơn B</text>
+        <rect x="46" y="210" width="150" height="22" rx="4" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <text x="56" y="225" font-size="10" font-family="monospace" fill="var(--accent)">key C · đơn C  ☑</text>
+
+        <line x1="206" y1="196" x2="252" y2="196" stroke="currentColor" stroke-width="1.2"/>
+        <text x="229" y="190" font-size="9.5" font-family="monospace" fill="currentColor" text-anchor="middle">đảo</text>
+
+        <text x="262" y="170" font-size="10" font-family="monospace" fill="currentColor">sau</text>
+        <rect x="300" y="158" width="150" height="22" rx="4" fill="none" stroke="var(--ok)" stroke-width="1.6"/>
+        <text x="310" y="173" font-size="10" font-family="monospace" fill="var(--ok)">key C · đơn C  ☑</text>
+        <rect x="300" y="184" width="150" height="22" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="310" y="199" font-size="10" font-family="monospace" fill="currentColor">key B · đơn B</text>
+        <rect x="300" y="210" width="150" height="22" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="310" y="225" font-size="10" font-family="monospace" fill="currentColor">key A · đơn A</text>
+        <text x="462" y="173" font-size="10" font-family="monospace" fill="var(--ok)">tick đi theo đúng đơn</text>
+      </svg>
+      <figcaption>Key là index thì state dính vào <strong>vị trí</strong>. Key là id thì state đi theo <strong>bản ghi</strong>.</figcaption>
+    </figure>
+
+    <h4>Vì sao lỗi này khó phát hiện</h4>
+    <p>Nội dung hiển thị thì <em>vẫn đúng</em> — vì nó đến từ prop <code>order</code> được truyền lại.
+    Chỉ có <strong>state nằm bên trong component con</strong> mới dính sai chỗ: ô tick, ô nhập chưa lưu,
+    dòng đang mở rộng, hiệu ứng đang chạy.</p>
+    <div class="flag"><p>Kinh điển nhất là <strong>ô input không kiểm soát</strong>. Gõ dở nửa chừng ở dòng 3,
+    danh sách đảo, chữ bạn gõ nhảy sang đơn khác. Không có lỗi nào báo, chỉ là dữ liệu vào nhầm chỗ.</p></div>
+
+    <h4>Khi nào index chấp nhận được</h4>
+    <p><strong>e</strong> đúng. Index an toàn khi thoả cả ba:</p>
+    <ul>
+      <li>Danh sách <strong>không đổi thứ tự</strong></li>
+      <li><strong>Không thêm/xoá</strong> ở giữa (thêm vào cuối thì vẫn ổn)</li>
+      <li>Phần tử <strong>không có state riêng</strong></li>
+    </ul>
+    <p>Ví dụ hợp: danh sách tĩnh trong footer, các mục menu cố định. Còn danh sách đến từ API,
+    có lọc có sắp xếp — gần như luôn cần id thật.</p>
+
+    <h4>Ba luật của key</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th>Luật</th><th>Vì sao</th></tr>
+      <tr><td><strong>Ổn định</strong> — cùng bản ghi thì cùng key qua các lần render</td><td>Đổi key = huỷ và dựng lại, mất state</td></tr>
+      <tr><td><strong>Duy nhất giữa các anh em</strong></td><td>Không cần duy nhất toàn app — chỉ trong cùng một danh sách</td></tr>
+      <tr><td><strong>Đến từ dữ liệu</strong>, không sinh lúc render</td><td><code>Math.random()</code> hay <code>Date.now()</code> phá sạch mọi lần render</td></tr>
+    </table></div>
+
+    <h4>Mẹo dùng ngược: cố tình đổi key để reset</h4>
+    <p>Đôi khi bạn <em>muốn</em> component quên hết state cũ. Đổi key là cách sạch nhất:</p>
+    <pre><code>&lt;OrderForm key={orderId} order={order} /&gt;</code></pre>
+    <p>Chuyển sang đơn khác thì <code>orderId</code> đổi → React huỷ form cũ, dựng form mới hoàn toàn sạch.
+    Gọn hơn nhiều so với viết một <code>useEffect</code> đi reset từng ô.</p>
+  `,
+  followups: [
+    { q: 'Key có cần duy nhất trên toàn ứng dụng không?',
+      a: '<p>Không. Chỉ cần duy nhất <strong>giữa các phần tử anh em</strong> trong cùng một danh sách. Hai bảng khác nhau dùng trùng key hoàn toàn không sao — React đối chiếu theo từng vị trí trong cây, không có một bảng key toàn cục.</p>' },
+    { q: 'Ghép id với index kiểu <code>key={`${o.id}-${i}`}</code> có ổn không?',
+      a: '<p>Không nên. Thêm index vào là bạn <strong>phá mất tính ổn định</strong> mà id vừa mang lại: đơn C đứng ở vị trí 2 rồi chuyển sang vị trí 0 thì key đổi từ <code>C-2</code> thành <code>C-0</code> → React coi là phần tử khác → huỷ và dựng lại.</p><p>Nếu id đã duy nhất thì dùng một mình id. Nếu id <em>không</em> duy nhất thì vấn đề nằm ở dữ liệu, phải sửa ở đó.</p>' },
+    { q: 'Không có id thì lấy gì làm key?',
+      a: '<p>Theo thứ tự ưu tiên: (1) một trường tự nhiên duy nhất có sẵn — slug, mã đơn, email; (2) ghép vài trường lại nếu tổ hợp đó duy nhất; (3) sinh id <strong>một lần</strong> lúc nhận dữ liệu về rồi lưu vào state, chứ không sinh lúc render.</p><p>Cách (3) hay dùng cho hàng mới thêm trong form động — <code>crypto.randomUUID()</code> lúc bấm "Thêm dòng", không phải lúc render.</p>' },
+    { q: 'React cảnh báo "Each child should have a unique key" — bỏ qua được không?',
+      a: '<p>Không nên. Không có key, React lùi về đối chiếu theo vị trí — tức đúng bằng hành vi tệ nhất của <code>key={index}</code>, cộng thêm việc bạn mất khả năng kiểm soát.</p><p>Cảnh báo đó là một trong số ít cảnh báo của React mà gần như <strong>luôn</strong> chỉ ra một lỗi thật hoặc một lỗi sắp xảy ra.</p>' },
+  ],
+},
+
 /* ---------------------------------------------------------- BE */
 {
   id: 'be-01',
@@ -1884,18 +2008,6 @@ if (!isOwner && !isAdmin) throw new ForbiddenException('NOT_YOUR_ORDER');</code>
   ],
 },
 
-];
-
-/* ============================================================
-   ĐỘNG CƠ v3 — lọc, đảo, chấm; giải thích mở trong hộp thoại
-   ============================================================ */
-
-const LS = 'lo-luyen-v1';
-const $ = (s) => document.querySelector(s);
-const LETTER = 'ABCDEF';
-const LEVELS = ['dễ', 'trung bình', 'khó'];
-const STATUS = [
-  ['all', 'Tất cả'], ['todo', 'Chưa làm'], ['bad', 'Từng sai'], ['ok', 'Đã đúng'],
 
 {
   id: 'be-03',
@@ -2052,6 +2164,18 @@ LIMIT 20</code></pre>
       a: '<p>Trả lời bằng con số và điều kiện, đừng nói chung chung:</p><p>"Offset đủ tốt khi tổng số dòng nằm trong khoảng vài chục nghìn, người dùng hiếm khi đi quá vài trang đầu, và dữ liệu không bị ghi liên tục trong lúc đọc. Bảng quản trị gần như luôn thoả cả ba. Tôi chỉ đổi sang cursor khi thấy trang sâu bắt đầu chậm, hoặc khi người dùng báo thấy bản ghi trùng lặp."</p>' },
   ],
 },
+];
+
+/* ============================================================
+   ĐỘNG CƠ v3 — lọc, đảo, chấm; giải thích mở trong hộp thoại
+   ============================================================ */
+
+const LS = 'lo-luyen-v1';
+const $ = (s) => document.querySelector(s);
+const LETTER = 'ABCDEF';
+const LEVELS = ['dễ', 'trung bình', 'khó'];
+const STATUS = [
+  ['all', 'Tất cả'], ['todo', 'Chưa làm'], ['bad', 'Từng sai'], ['ok', 'Đã đúng'],
 ];
 
 const st = {
