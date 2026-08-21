@@ -1446,6 +1446,100 @@ mutate({ id, price }, {
   ],
 },
 
+{
+  id: 'fe-08',
+  section: 'fe',
+  topic: 'Phân trang',
+  level: 'trung bình',
+  multi: true,
+  q: 'Thợ đang xem <strong>trang 3</strong>, lọc <code>PENDING</code> (45 đơn, 3 trang). Admin duyệt hàng loạt, 30 đơn chuyển sang <code>DONE</code>. Sau <code>invalidateQueries</code>, danh sách chỉ còn 15 đơn — <strong>1 trang</strong>. Nhưng bộ lọc trong Zustand vẫn ghi <code>page: 3</code>. Nhận định nào <strong>đúng</strong>?',
+  code: `// BE tra ve dung nhu duoc hoi:
+{ "data": [], "meta": { "page": 3, "totalPages": 1, "total": 15 } }`,
+  options: [
+    { id: 'a', text: 'Màn hình <strong>trống trơn</strong>, không lỗi, không thông báo — thợ tưởng hết đơn' },
+    { id: 'b', text: 'Gốc rễ: <code>page</code> là client state nhưng <strong>tính hợp lệ</strong> của nó phụ thuộc <code>totalPages</code> là server state' },
+    { id: 'c', text: 'Cần một bước <strong>đối chiếu lại</strong>: khi <code>meta</code> về, kẹp <code>page</code> về trang cuối hợp lệ' },
+    { id: 'd', text: 'Logic "đổi bộ lọc thì reset về trang 1" trong <code>createFilterStore</code> đã đủ để chặn ca này' },
+    { id: 'e', text: 'TanStack Query tự phát hiện và sửa số trang giúp' },
+  ],
+  correct: ['a', 'b', 'c'],
+  why: `
+    <p><strong>d</strong> sai và đây là chỗ tinh tế: <code>createFilterStore</code> có reset về trang 1,
+    nhưng chỉ khi <strong>người dùng tự đổi</strong> search/sort/filter/limit. Ở đây bộ lọc
+    <em>không đổi gì cả</em> — dữ liệu bên dưới co lại. Không có sự kiện nào để store bám vào.</p>
+    <p><strong>e</strong> sai: Query chỉ lo chuyện tải và cache dữ liệu. Nó không biết gì về khái niệm
+    "trang", cũng không đọc hiểu <code>meta</code> của bạn.</p>
+
+    <h4>Gốc rễ: client state trỏ vào server state</h4>
+    <p>Đây là ý đáng nhớ nhất, và nó nối thẳng về bài đầu tiên về server state vs client state.</p>
+    <figure class="dg">
+      <svg viewBox="0 0 600 180" role="img" aria-label="page do client so huu nhung tinh hop le cua no phu thuoc totalPages do server so huu, nen khi server doi thi con tro chi vao cho khong ton tai">
+        <rect x="40" y="24" width="180" height="48" rx="8" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <text x="130" y="45" font-size="12" font-family="monospace" fill="var(--accent)" text-anchor="middle">page = 3</text>
+        <text x="130" y="62" font-size="10" font-family="monospace" fill="var(--accent)" text-anchor="middle">client sở hữu</text>
+
+        <rect x="380" y="24" width="180" height="48" rx="8" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <text x="470" y="45" font-size="12" font-family="monospace" fill="currentColor" text-anchor="middle">totalPages = 1</text>
+        <text x="470" y="62" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle">server sở hữu</text>
+
+        <line x1="220" y1="48" x2="380" y2="48" stroke="var(--bad)" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <text x="300" y="40" font-size="10.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">trỏ vào</text>
+
+        <line x1="470" y1="72" x2="470" y2="104" stroke="var(--bad)" stroke-width="1.4"/>
+        <text x="470" y="122" font-size="10.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">server đổi sau lưng client</text>
+        <text x="300" y="152" font-size="11.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">→ con trỏ chỉ vào chỗ không tồn tại → màn hình trống</text>
+      </svg>
+      <figcaption>Hễ client state trỏ vào server state thì phải có một bước đối chiếu lại — không riêng phân trang.</figcaption>
+    </figure>
+    <p>Cùng loại lỗi này còn xuất hiện ở: <code>selectedId</code> của bản ghi vừa bị xoá, tab đang mở ứng với
+    danh mục vừa bị ẩn, bộ lọc theo một thợ vừa bị khoá tài khoản.</p>
+
+    <h4>Cách 1 — kẹp lại ở FE khi meta về (thực dụng nhất)</h4>
+    <pre><code>const { data } = useOrders(params);
+const setPage = useOrderFilters((s) =&gt; s.setPage);
+const totalPages = data?.meta.totalPages;
+
+useEffect(() =&gt; {
+  if (totalPages === undefined) return;
+  const last = Math.max(1, totalPages);
+  if (params.page &gt; last) setPage(last);
+}, [totalPages, params.page, setPage]);</code></pre>
+    <div class="flag"><p>Phụ thuộc vào <strong><code>totalPages</code> (một con số)</strong>, đừng phụ thuộc
+    <code>meta</code> — object đó mới toanh sau mỗi lần fetch, effect sẽ chạy loạn.
+    Và đặt <strong>một chỗ</strong> trong hook danh sách dùng chung, đừng chép vào từng trang.</p></div>
+    <p>Giá phải trả: <strong>một request phí</strong>. Gọi trang 3 → rỗng → kẹp về trang 1 → gọi lại.
+    Người dùng thấy nháy một cái.</p>
+
+    <h4>Cách 2 — để BE tự kẹp</h4>
+    <p>Server thấy <code>page &gt; totalPages</code> thì trả trang cuối. Hết nháy, hết request phí.
+    Nhưng API trở nên "không thật thà" — hỏi trang 3 lại nhận trang 1, mà client không biết mình vừa bị đổi.</p>
+    <p>Chọn cách này thì <strong>bắt buộc trả <code>meta.page</code> là trang thật đã trả</strong>,
+    để FE đồng bộ lại. Không thì FE và BE nghĩ khác nhau.</p>
+
+    <h4>Cách 3 — màn hình rỗng có lối thoát</h4>
+    <p>Rẻ nhất, và nên có <em>dù chọn cách nào</em>: thay vì để trống, hiện
+    "Trang này không còn dữ liệu" kèm nút <strong>Về trang đầu</strong>. Nó không sửa được gốc,
+    nhưng biến một màn hình chết thành một màn hình nói được chuyện gì đang xảy ra.</p>
+
+    <h4>Câu chốt khi phỏng vấn</h4>
+    <div class="script">
+      <p>"Phân trang bằng page/limit có điểm yếu cố hữu: <strong>số trang là con trỏ vào dữ liệu server,
+      mà dữ liệu đó đổi sau lưng mình</strong>. Nên bất cứ chỗ nào client state trỏ vào server state
+      đều cần một bước đối chiếu.</p>
+      <p>Tôi kẹp page về trang cuối hợp lệ ngay khi meta về, đặt một chỗ trong hook danh sách dùng chung.
+      Và luôn có trạng thái rỗng kèm nút quay về trang đầu, vì kẹp thì vẫn còn một nhịp nháy."</p>
+    </div>
+  `,
+  followups: [
+    { q: 'Phân trang bằng cursor có bị lỗi này không?',
+      a: '<p>Không bị theo cách này, vì cursor trỏ vào <strong>một bản ghi cụ thể</strong> chứ không phải một vị trí đếm được. Dữ liệu co lại thì cursor vẫn hợp lệ.</p><p>Nhưng nó có vấn đề riêng: <strong>không nhảy thẳng tới trang N được</strong>, không hiện được "trang 3/10", và nếu chính bản ghi làm cursor bị xoá thì cũng gãy. Đổi lấy sự ổn định bằng cách mất khả năng nhảy trang.</p>' },
+    { q: 'Vì sao không đơn giản là luôn reset về trang 1 sau mỗi lần invalidate?',
+      a: '<p>Vì phần lớn lần invalidate <strong>không</strong> làm đổi số trang. Thợ đang xem trang 3, bấm nhận một đơn, rồi bị đá về trang 1 — bực hơn hẳn cái lỗi ban đầu.</p><p>Chỉ kẹp khi <em>thật sự</em> vượt quá, tức là so <code>page</code> với <code>totalPages</code> vừa nhận về.</p>' },
+    { q: 'Đặt đoạn kẹp đó ở đâu cho đúng?',
+      a: '<p>Trong <strong>hook danh sách dùng chung</strong> — chỗ đã có sẵn cả <code>params</code> lẫn <code>meta</code>. Nếu để ở từng trang thì sớm muộn cũng có trang quên.</p><p>Dự án bạn có <code>createFilterStore</code> và <code>useListParams</code> — chỗ tự nhiên nhất là gói việc kẹp vào cùng tầng đó, để mọi màn hình danh sách được hưởng mà không phải nhớ gì.</p>' },
+  ],
+},
+
 /* ---------------------------------------------------------- BE */
 {
   id: 'be-01',
