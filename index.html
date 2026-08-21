@@ -1993,6 +1993,252 @@ Connection: Upgrade
   ],
 },
 
+{
+  id: 'fe-13',
+  section: 'fe',
+  topic: 'React core',
+  level: 'khó',
+  multi: true,
+  q: 'Dev bọc mọi handler bằng <code>useCallback</code> "cho chắc ăn", nhưng <strong>không</strong> component con nào được bọc <code>React.memo</code>. Nhận định nào <strong>đúng</strong>?',
+  code: `function OrdersPage() {
+  const [count, setCount] = useState(0);
+
+  const handleRowClick = useCallback((o) => openOrder(o), []);
+  const pending = useMemo(() => orders.filter(o => o.status === 'PENDING'), [orders]);
+
+  return (
+    <>
+      <button onClick={() => setCount(c => c + 1)}>{count}</button>
+      <OrderTable data={pending} onRowClick={handleRowClick} />
+    </>
+  );
+}`,
+  options: [
+    { id: 'a', text: '<code>useCallback</code> ở đây <strong>không tiết kiệm gì</strong> — <code>OrderTable</code> vẫn chạy lại mỗi khi cha render' },
+    { id: 'b', text: 'Nó còn làm <strong>chậm hơn một chút</strong>: tốn ô nhớ và một lần so mảng phụ thuộc mỗi render' },
+    { id: 'c', text: 'Muốn có tác dụng thì phải bọc <code>OrderTable</code> bằng <code>React.memo</code> — thiếu mắt xích đó thì cả chuỗi vô dụng' },
+    { id: 'd', text: '<code>useMemo</code> cho <code>pending</code> vẫn có ích riêng: khỏi lọc lại mảng mỗi lần bấm nút' },
+    { id: 'e', text: 'Re-render đồng nghĩa với việc React vẽ lại DOM, nên phải tránh bằng mọi giá' },
+  ],
+  correct: ['a', 'b', 'c', 'd'],
+  why: `
+    <p><strong>e</strong> sai, và đây là hiểu nhầm gốc rễ khiến người ta tối ưu sai chỗ.</p>
+
+    <h4>Re-render KHÔNG phải vẽ lại DOM</h4>
+    <p>Re-render nghĩa là React <strong>chạy lại hàm component</strong> để lấy một <em>bản mô tả</em> giao diện.
+    Sau đó nó so bản mới với bản cũ và <strong>chỉ chạm vào DOM ở đúng chỗ khác nhau</strong>.</p>
+    <pre><code>state đổi → chạy lại hàm component → được mô tả mới
+         → so với mô tả cũ (diff)
+         → chỉ sửa DOM ở chỗ thật sự khác</code></pre>
+    <p>Chạy lại một hàm JavaScript là <strong>rẻ</strong>. Chạm DOM mới đắt. Vì vậy phần lớn re-render
+    <em>không phải vấn đề</em>, và tối ưu sớm thường lỗ.</p>
+
+    <h4>Ba thứ gây re-render</h4>
+    <ol>
+      <li>State của chính nó đổi</li>
+      <li><strong>Cha re-render</strong> — con re-render theo, <strong>bất kể props có đổi hay không</strong></li>
+      <li>Context đang dùng đổi giá trị</li>
+    </ol>
+    <p>Điểm 2 là mặc định của React, không phải lỗi. <code>React.memo</code> tồn tại chính để phá lệ điểm này.</p>
+
+    <h4>Chuỗi ba mắt — ý quan trọng nhất</h4>
+    <figure class="dg">
+      <svg viewBox="0 0 620 190" role="img" aria-label="Chuoi ba mat xich: useCallback giu tham chieu on dinh, React.memo so sanh thay giong, ket qua la bo qua render; thieu mot mat thi ca chuoi vo dung">
+        <defs>
+          <marker id="ar14" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--ok)"/></marker>
+          <marker id="ar14b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--bad)"/></marker>
+        </defs>
+
+        <text x="0" y="12" font-size="10.5" font-family="monospace" fill="var(--ok)" letter-spacing="1">ĐỦ CẢ CHUỖI</text>
+        <rect x="0" y="26" width="170" height="42" rx="7" fill="none" stroke="var(--ok)" stroke-width="1.5"/>
+        <text x="85" y="44" font-size="10" font-family="monospace" fill="var(--ok)" text-anchor="middle">useCallback/useMemo</text>
+        <text x="85" y="59" font-size="9.5" font-family="monospace" fill="var(--ok)" text-anchor="middle">tham chiếu ổn định</text>
+        <line x1="170" y1="47" x2="212" y2="47" stroke="var(--ok)" stroke-width="1.4" marker-end="url(#ar14)"/>
+        <rect x="218" y="26" width="170" height="42" rx="7" fill="none" stroke="var(--ok)" stroke-width="1.5"/>
+        <text x="303" y="44" font-size="10" font-family="monospace" fill="var(--ok)" text-anchor="middle">React.memo</text>
+        <text x="303" y="59" font-size="9.5" font-family="monospace" fill="var(--ok)" text-anchor="middle">so sánh thấy giống</text>
+        <line x1="388" y1="47" x2="430" y2="47" stroke="var(--ok)" stroke-width="1.4" marker-end="url(#ar14)"/>
+        <rect x="436" y="26" width="170" height="42" rx="7" fill="none" stroke="var(--ok)" stroke-width="1.7"/>
+        <text x="521" y="44" font-size="10" font-family="monospace" fill="var(--ok)" text-anchor="middle">BỎ QUA RENDER</text>
+        <text x="521" y="59" font-size="9.5" font-family="monospace" fill="var(--ok)" text-anchor="middle">thật sự tiết kiệm</text>
+
+        <line x1="0" y1="96" x2="620" y2="96" stroke="currentColor" stroke-width="1" opacity=".2"/>
+
+        <text x="0" y="120" font-size="10.5" font-family="monospace" fill="var(--bad)" letter-spacing="1">THIẾU MỘT MẮT</text>
+        <rect x="0" y="134" width="170" height="42" rx="7" fill="none" stroke="var(--ok)" stroke-width="1.5"/>
+        <text x="85" y="152" font-size="10" font-family="monospace" fill="var(--ok)" text-anchor="middle">useCallback</text>
+        <text x="85" y="167" font-size="9.5" font-family="monospace" fill="var(--ok)" text-anchor="middle">vẫn tốn chi phí</text>
+        <line x1="170" y1="155" x2="212" y2="155" stroke="var(--bad)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ar14b)"/>
+        <rect x="218" y="134" width="170" height="42" rx="7" fill="none" stroke="var(--bad)" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <text x="303" y="152" font-size="10" font-family="monospace" fill="var(--bad)" text-anchor="middle">không có memo</text>
+        <text x="303" y="167" font-size="9.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">không ai so sánh</text>
+        <line x1="388" y1="155" x2="430" y2="155" stroke="var(--bad)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ar14b)"/>
+        <rect x="436" y="134" width="170" height="42" rx="7" fill="none" stroke="var(--bad)" stroke-width="1.5"/>
+        <text x="521" y="152" font-size="10" font-family="monospace" fill="var(--bad)" text-anchor="middle">VẪN RENDER</text>
+        <text x="521" y="167" font-size="9.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">lỗ ròng</text>
+      </svg>
+      <figcaption>Ba mắt xích phải đủ cả. Thiếu một mắt thì không tiết kiệm được gì, mà chi phí ghi nhớ vẫn phải trả.</figcaption>
+    </figure>
+
+    <h4>React.memo so sánh cái gì</h4>
+    <p>So <strong>nông</strong>, từng prop một, bằng <code>Object.is</code>. Nên đoạn này khiến memo vô dụng:</p>
+    <pre><code>&lt;HeavyTable
+  data={orders.filter(o =&gt; o.status === 'PENDING')}   // mảng MỚI mỗi render
+  onRowClick={(o) =&gt; openOrder(o)}                    // hàm MỚI mỗi render
+/&gt;</code></pre>
+    <div class="script">
+      <p><code>React.memo</code> không hỏi <em>"nội dung có giống không"</em>.</p>
+      <p>Nó hỏi <em>"có phải cùng một tham chiếu không"</em>.</p>
+    </div>
+
+    <h4>d) đúng — useMemo có giá trị độc lập</h4>
+    <p>Khác <code>useCallback</code>, <code>useMemo</code> cho <code>pending</code> vẫn có ích kể cả khi
+    không có <code>memo</code>: bấm nút đếm không làm lọc lại mảng đơn. Nhưng chỉ đáng khi phép tính
+    <strong>thật sự đắt</strong> — <code>useMemo(() =&gt; a + b, [a, b])</code> thì phép cộng còn rẻ hơn
+    việc đi nhớ.</p>
+
+    <h4>Khi nào dùng thật</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th>Dùng khi</th><th>Đừng dùng khi</th></tr>
+      <tr><td>Tính toán thật sự đắt (lọc/sắp xếp nghìn dòng)</td><td>Phép tính rẻ</td></tr>
+      <tr><td>Truyền xuống component có <code>memo</code></td><td>Con không có <code>memo</code></td></tr>
+      <tr><td>Là dependency của <code>useEffect</code> / <code>useMemo</code> khác</td><td>"Cho chắc ăn"</td></tr>
+      <tr><td>Giá trị của Context Provider</td><td></td></tr>
+    </table></div>
+    <p>Dòng cuối chính là code trong <code>UIProvider</code> của dự án:</p>
+    <pre><code>const value = useMemo(() =&gt; ({ labels, onError, translateError }), [...]);</code></pre>
+    <p>Bỏ <code>useMemo</code> ở đây thì mỗi lần provider render là <code>value</code> thành object mới →
+    <strong>mọi component dùng context đó re-render</strong>, dù chữ chẳng đổi. Đây là chỗ
+    <code>useMemo</code> gần như luôn đúng.</p>
+
+    <h4>Một mẹo không cần hook nào</h4>
+    <pre><code>&lt;Layout&gt;
+  &lt;HeavyTable data={data} /&gt;
+&lt;/Layout&gt;</code></pre>
+    <p><code>HeavyTable</code> được tạo trong phạm vi <strong>cha của <code>Layout</code></strong>.
+    <code>Layout</code> render lại bao nhiêu lần thì <code>children</code> vẫn là <em>cùng một element</em>,
+    nên React bỏ qua. Không hook, không memo.</p>
+  `,
+  followups: [
+    { q: 'Vậy có nên bọc memo cho mọi component không?',
+      a: '<p>Không. Mỗi <code>memo</code> đều tốn: lưu props cũ, và so sánh nông ở mỗi lần cha render. Với component nhỏ thì so sánh còn đắt hơn render lại.</p><p>Cách làm đúng: <strong>đo trước</strong> bằng React DevTools Profiler, tìm component render lâu thật, rồi mới memo đúng chỗ đó. Tối ưu theo cảm giác thường lỗ.</p>' },
+    { q: '<code>useMemo</code> có đảm bảo giá trị được giữ không?',
+      a: '<p><strong>Không.</strong> Tài liệu React nói rõ đó là tối ưu hiệu năng, <em>không phải bảo đảm ngữ nghĩa</em> — React được phép quên giá trị đã nhớ.</p><p>Nghĩa là đừng bao giờ để tính đúng đắn của code phụ thuộc vào <code>useMemo</code>. Cần một giá trị chắc chắn không đổi thì dùng <code>useRef</code> hoặc đưa ra ngoài component.</p>' },
+    { q: 'React Compiler ở React 19 có làm những thứ này thành thừa không?',
+      a: '<p>Phần lớn là có. Compiler tự phân tích và chèn ghi nhớ ở chỗ cần, nên hầu hết <code>useMemo</code>/<code>useCallback</code> viết tay sẽ không còn cần.</p><p>Nhưng dự án đang ở React 18 nên vẫn phải hiểu và làm thủ công. Và kể cả có compiler, bạn vẫn cần hiểu <em>vì sao</em> nó chèn ở đó — để đọc được profiler khi có gì đó chậm.</p>' },
+    { q: 'Context làm mọi consumer re-render — có cách nào tránh không?',
+      a: '<p>Ba cách, từ dễ tới khó:</p><ul><li><strong>Tách context</strong> — thứ đổi thường xuyên tách riêng khỏi thứ ít đổi. Dự án bạn tách <code>ThemeProvider</code> khỏi <code>UIProvider</code> chính là vậy.</li><li><strong>useMemo cho value</strong> — chặn re-render do tạo object mới.</li><li><strong>Tách state và dispatch thành hai context</strong> — component chỉ gửi lệnh thì không cần nghe state.</li></ul>' },
+  ],
+},
+
+{
+  id: 'fe-14',
+  section: 'fe',
+  topic: 'React core',
+  level: 'trung bình',
+  multi: true,
+  q: 'Đoạn nào dưới đây <strong>KHÔNG cần</strong> <code>useEffect</code> — tức là dùng effect ở đó là sai cách?',
+  code: `// ① ghép tên hiển thị
+useEffect(() => { setFullName(first + ' ' + last); }, [first, last]);
+
+// ② sau khi gửi form thành công
+useEffect(() => {
+  if (submitted) { toast.success('Xong'); navigate('/orders'); }
+}, [submitted]);
+
+// ③ nối socket nghe vị trí thợ
+useEffect(() => {
+  socket.on('position', onPos);
+  return () => socket.off('position', onPos);
+}, [orderId]);
+
+// ④ đổi tiêu đề tab theo số đơn chưa đọc
+useEffect(() => { document.title = \`(\${unread}) Đơn hàng\`; }, [unread]);`,
+  options: [
+    { id: 'a', text: '① — giá trị dẫn xuất, tính thẳng lúc render là xong' },
+    { id: 'b', text: '② — việc xảy ra vì người dùng bấm nút, viết trong handler' },
+    { id: 'c', text: '③ — đây là đồng bộ với hệ thống ngoài React, đúng chỗ dùng effect' },
+    { id: 'd', text: '④ — <code>document.title</code> nằm ngoài React, đúng chỗ dùng effect' },
+    { id: 'e', text: 'Cả bốn đều nên dùng effect cho nhất quán' },
+  ],
+  correct: ['a', 'b'],
+  why: `
+    <p><strong>c</strong> và <strong>d</strong> là mô tả <em>đúng</em>, nhưng đề hỏi cái nào
+    <strong>KHÔNG cần</strong> effect — nên chúng không phải đáp án. Đọc kỹ đề cũng là một kỹ năng phỏng vấn.</p>
+
+    <h4>useEffect dùng để làm gì</h4>
+    <div class="script">
+      <p><strong>Đồng bộ component với một hệ thống NGOÀI React.</strong></p>
+      <p>Ngoài React = mạng, WebSocket, <code>setTimeout</code>, <code>localStorage</code>,
+      tiêu đề trang, thư viện bên thứ ba như Leaflet.</p>
+    </div>
+    <p>Nếu việc bạn định làm <strong>không</strong> đụng tới thế giới bên ngoài, gần như chắc chắn
+    bạn không cần effect.</p>
+
+    <h4>① Giá trị dẫn xuất — lỗi phổ biến nhất</h4>
+    <pre><code>// ❌ hai lần render, và một nhịp hiện giá trị CŨ
+const [fullName, setFullName] = useState('');
+useEffect(() =&gt; { setFullName(first + ' ' + last); }, [first, last]);
+
+// ✅ tính thẳng lúc render
+const fullName = first + ' ' + last;</code></pre>
+    <p>Bản sai render <strong>hai lần</strong>: lần một với <code>fullName</code> cũ, rồi effect chạy,
+    setState, render lần hai. Người dùng thấy giá trị cũ chớp qua. Bản đúng chỉ render một lần
+    và không bao giờ lệch.</p>
+    <div class="flag"><p>Quy tắc chung: <strong>state chỉ dành cho thứ KHÔNG suy ra được</strong> từ
+    state/prop khác. Suy ra được thì tính lúc render — dùng <code>useMemo</code> nếu phép tính đắt.</p></div>
+
+    <h4>② Phản ứng với hành động người dùng</h4>
+    <pre><code>// ❌ vòng vèo: thêm một biến state chỉ để "kích hoạt" effect
+useEffect(() =&gt; {
+  if (submitted) { toast.success('Xong'); navigate('/orders'); }
+}, [submitted]);
+
+// ✅ làm ngay trong handler
+async function onSubmit() {
+  await save();
+  toast.success('Xong');
+  navigate('/orders');
+}</code></pre>
+    <p>Bản sai còn có lỗi ẩn: <code>submitted</code> vẫn là <code>true</code>, nên nếu component
+    mount lại vì lý do khác thì toast và điều hướng chạy lại lần nữa.</p>
+    <div class="script">
+      <p><strong>Việc xảy ra vì người dùng làm gì đó</strong> → viết trong handler.</p>
+      <p><strong>Việc xảy ra vì component đang hiển thị</strong> → viết trong effect.</p>
+    </div>
+
+    <h4>Ba phần của một effect</h4>
+    <pre><code>useEffect(() =&gt; {
+  // setup — chạy sau khi render xong
+  return () =&gt; {
+    // cleanup — chạy TRƯỚC mỗi lần setup lại, và một lần khi unmount
+  };
+}, [deps]);   // deps — "chạy lại khi những thứ này đổi"</code></pre>
+    <p>Cleanup <strong>không phải</strong> "dọn khi đóng cửa". Nó chạy trước <em>mỗi</em> lần setup lại.
+    Cách đọc đúng: mỗi khi deps đổi thì <strong>dọn cái cũ → dựng cái mới</strong>.</p>
+
+    <h4>Ba lỗi hay gặp với deps</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th>Lỗi</th><th>Hiện tượng</th></tr>
+      <tr><td>Object/hàm trong deps</td><td><strong>Vòng lặp vô tận</strong> — object mới mỗi render nên effect chạy mãi</td></tr>
+      <tr><td>Thiếu deps</td><td><strong>Stale closure</strong> — effect nhìn thấy giá trị cũ đóng băng</td></tr>
+      <tr><td>Quên cleanup</td><td>Listener, timer, kết nối <strong>chồng chất</strong></td></tr>
+    </table></div>
+    <p>Lỗi đầu tiên chính là điều cần nhớ ở câu về kẹp số trang: phụ thuộc vào
+    <code>totalPages</code> (một con số) chứ đừng phụ thuộc <code>meta</code> (một object).</p>
+  `,
+  followups: [
+    { q: 'Vì sao ở dev thấy effect chạy hai lần còn production thì không?',
+      a: '<p>React 18 ở <code>StrictMode</code> <strong>cố tình</strong> chạy <em>setup → cleanup → setup</em> ngay lần mount đầu, chỉ trong dev.</p><p>Đó là tính năng: nó phơi bày đúng những effect không cleanup được. Câu trả lời ăn điểm: <em>"thấy hai lần nghĩa là effect của tôi chưa idempotent — tôi sửa cleanup, không tắt StrictMode"</em>.</p>' },
+    { q: 'Gọi API để tải dữ liệu có nên dùng useEffect không?',
+      a: '<p>Về nguyên tắc là đúng chỗ (mạng nằm ngoài React). Nhưng <strong>tự viết thì phải tự lo</strong>: race condition, loading/error, huỷ khi unmount, dedupe, cache.</p><p>Đó chính là lý do dự án dùng TanStack Query thay vì <code>useEffect + fetch</code> — thư viện đã làm sẵn sáu việc đó. Xem lại câu về server state.</p>' },
+    { q: 'ESLint bảo thiếu dependency, thêm vào thì vòng lặp vô tận. Làm sao?',
+      a: '<p>Đừng tắt cảnh báo — nó gần như luôn đúng. Vòng lặp là dấu hiệu <strong>thiết kế sai</strong>, không phải lỗi của lint. Vài hướng sửa:</p><ul><li>Phụ thuộc vào <strong>giá trị nguyên thuỷ</strong> thay vì object: <code>[filters.status, filters.page]</code></li><li><code>useMemo</code> chính cái object đó ở nơi tạo ra nó</li><li>Đưa hàm vào <em>trong</em> effect nếu nó chỉ dùng ở đó</li><li>Nhận ra rằng có lẽ bạn <strong>không cần effect</strong> — quay lại hai ca ở trên</li></ul>' },
+    { q: '<code>useLayoutEffect</code> khác gì?',
+      a: '<p><code>useEffect</code> chạy <strong>sau khi</strong> trình duyệt vẽ xong. <code>useLayoutEffect</code> chạy <strong>trước khi</strong> vẽ, nên nó chặn hiển thị.</p><p>Chỉ dùng khi bạn phải <em>đo</em> DOM rồi chỉnh ngay để tránh nhấp nháy — ví dụ đo chiều cao tooltip để đặt vị trí. Dùng bừa thì làm chậm hiển thị.</p>' },
+  ],
+},
+
 /* ---------------------------------------------------------- BE */
 {
   id: 'be-01',
