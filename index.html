@@ -1540,6 +1540,80 @@ useEffect(() =&gt; {
   ],
 },
 
+{
+  id: 'fe-09',
+  section: 'fe',
+  topic: 'Phân trang',
+  level: 'trung bình',
+  multi: true,
+  q: 'Bảng danh sách đơn dùng <code>useQuery</code> với khoá <code>[\'orders\',\'list\',{page,...}]</code>. Mỗi lần bấm "Trang sau", <strong>toàn bộ bảng biến mất</strong> và hiện skeleton loading, rồi dữ liệu mới mới xuất hiện. Cách sửa nào <strong>đúng</strong>?',
+  code: `useQuery({
+  queryKey: ['orders', 'list', params],
+  queryFn: () => orderApi.list(params),
+});`,
+  options: [
+    { id: 'a', text: 'Thêm <code>placeholderData: keepPreviousData</code> — giữ dữ liệu trang cũ trong lúc tải trang mới' },
+    { id: 'b', text: 'Dùng <code>isFetching</code> thay cho <code>isPending</code> để hiện một vạch mảnh thay vì skeleton toàn bảng' },
+    { id: 'c', text: 'Bỏ <code>page</code> khỏi <code>queryKey</code> để Query khỏi coi đây là truy vấn mới' },
+    { id: 'd', text: 'Tăng <code>staleTime</code> lên thật cao' },
+    { id: 'e', text: 'Trong lúc giữ dữ liệu cũ, nên làm mờ bảng đi để người dùng biết nó chưa phải dữ liệu mới' },
+  ],
+  correct: ['a', 'b', 'e'],
+  why: `
+    <h4>Vì sao bảng biến mất</h4>
+    <p>Đổi trang là đổi <code>queryKey</code>. Với Query, <strong>khoá mới = truy vấn hoàn toàn khác</strong>,
+    chưa từng có dữ liệu → <code>isPending = true</code> → component vẽ skeleton.</p>
+    <p>Đây không phải lỗi, đó là hành vi đúng theo mặc định. Chỉ là với phân trang thì nó gây khó chịu:
+    bảng nhấp nháy, chiều cao trang nhảy, mắt phải tìm lại vị trí.</p>
+
+    <h4>a) placeholderData: keepPreviousData</h4>
+    <pre><code>import { keepPreviousData } from '@tanstack/react-query';
+
+useQuery({
+  queryKey: ['orders', 'list', params],
+  queryFn: () =&gt; orderApi.list(params),
+  placeholderData: keepPreviousData,     // v5
+});</code></pre>
+    <p>Query sẽ <strong>giữ nguyên dữ liệu của khoá trước</strong> để hiển thị, trong lúc âm thầm tải khoá mới.
+    Bảng không biến mất, không nhảy chiều cao.</p>
+    <div class="flag"><p>Ở <strong>v4</strong> tuỳ chọn này tên là <code>keepPreviousData: true</code>.
+    Sang <strong>v5</strong> nó gộp vào <code>placeholderData</code>. Rất nhiều bài hướng dẫn còn viết theo v4.</p></div>
+
+    <h4>b) và e) — phân biệt isPending với isFetching</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th></th><th>Nghĩa là</th><th>Dùng để</th></tr>
+      <tr><td><code>isPending</code></td><td><strong>Chưa có dữ liệu nào</strong> để hiện</td><td>Skeleton toàn bảng — lần vào đầu tiên</td></tr>
+      <tr><td><code>isFetching</code></td><td>Đang gọi API, <strong>nhưng vẫn có dữ liệu cũ</strong></td><td>Vạch mảnh trên đầu bảng, làm mờ nhẹ</td></tr>
+      <tr><td><code>isPlaceholderData</code></td><td>Dữ liệu đang hiện là <strong>của trang trước</strong></td><td>Khoá nút "Sau" để tránh nhảy hai trang</td></tr>
+    </table></div>
+    <pre><code>const { data, isPending, isFetching, isPlaceholderData } = useOrders(params);
+
+if (isPending) return &lt;TableSkeleton /&gt;;              // lần đầu, chưa có gì
+
+return (
+  &lt;div style={{ opacity: isFetching ? .6 : 1 }}&gt;      // e) mờ nhẹ khi đang tải
+    &lt;DataTable data={data.data} /&gt;
+    &lt;button disabled={isPlaceholderData}&gt;Sau&lt;/button&gt; // chặn nhảy 2 trang
+  &lt;/div&gt;
+);</code></pre>
+    <p><strong>e</strong> đúng và là chi tiết tử tế: giữ dữ liệu cũ mà không báo gì thì người dùng tưởng
+    đã sang trang mới, đọc nhầm số liệu. Làm mờ nhẹ là cách nói "cái này sắp đổi" mà không phá bố cục.</p>
+
+    <h4>Vì sao c) và d) sai</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th></th><th>Hỏng ở đâu</th></tr>
+      <tr><td><code>c</code> bỏ page khỏi khoá</td><td><strong>Hỏng nặng.</strong> Mọi trang dùng chung một ô cache: sang trang 2 thấy dữ liệu trang 1, quay lại trang 1 thấy dữ liệu trang 2. Và mất luôn khả năng lưu cache riêng từng trang.</td></tr>
+      <tr><td><code>d</code> tăng staleTime</td><td>Không liên quan. <code>staleTime</code> quyết định có <em>gọi lại</em> hay không cho khoá <strong>đã có dữ liệu</strong>. Khoá của trang 2 là khoá mới toanh, chưa có gì để mà "còn tươi".</td></tr>
+    </table></div>
+  `,
+  followups: [
+    { q: 'Có cách nào tải sẵn trang sau để bấm là hiện ngay không?',
+      a: '<p>Có — <code>prefetchQuery</code>. Khi trang hiện tại tải xong, âm thầm tải trước trang kế:</p><pre><code>useEffect(() =&gt; {\n  if (!isPlaceholderData &amp;&amp; data?.meta.page &lt; data?.meta.totalPages) {\n    qc.prefetchQuery({\n      queryKey: [\'orders\',\'list\', { ...params, page: params.page + 1 }],\n      queryFn: () =&gt; orderApi.list({ ...params, page: params.page + 1 }),\n    });\n  }\n}, [data, isPlaceholderData]);</code></pre><p>Đổi lại: mỗi trang xem là <strong>hai</strong> request. Đáng làm khi người dùng hay lật liên tục, không đáng khi họ chỉ xem trang đầu rồi thoát.</p>' },
+    { q: '<code>isPending</code> và <code>isLoading</code> khác nhau thế nào ở v5?',
+      a: '<p>Ở v5, <code>isPending</code> nghĩa là <strong>chưa có dữ liệu</strong> (trước đây tên là <code>isLoading</code>). Còn <code>isLoading</code> bây giờ là <code>isPending &amp;&amp; isFetching</code> — tức chưa có dữ liệu <em>và</em> đang thật sự gọi API.</p><p>Khác nhau ở ca query bị <code>enabled: false</code>: lúc đó <code>isPending</code> vẫn true (chưa có dữ liệu) nhưng <code>isLoading</code> false (có gọi gì đâu). Dùng nhầm thì skeleton quay mãi không dừng.</p>' },
+  ],
+},
+
 /* ---------------------------------------------------------- BE */
 {
   id: 'be-01',
@@ -1685,6 +1759,162 @@ const LETTER = 'ABCDEF';
 const LEVELS = ['dễ', 'trung bình', 'khó'];
 const STATUS = [
   ['all', 'Tất cả'], ['todo', 'Chưa làm'], ['bad', 'Từng sai'], ['ok', 'Đã đúng'],
+
+{
+  id: 'be-03',
+  section: 'be',
+  topic: 'Phân trang',
+  level: 'trung bình',
+  multi: true,
+  q: 'Endpoint danh sách chạy hai truy vấn bọc trong <code>$transaction</code>. Nhận định nào <strong>đúng</strong>?',
+  code: `const [items, total] = await this.prisma.$transaction([
+  this.prisma.auditLog.findMany({ where, ...getSkipTake(query), orderBy }),
+  this.prisma.auditLog.count({ where }),
+]);
+return buildPaginated(items, total, query);`,
+  options: [
+    { id: 'a', text: 'Bắt buộc phải có <code>count</code> vì không đếm thì không tính được <code>totalPages</code>' },
+    { id: 'b', text: '<code>$transaction</code> để hai truy vấn nhìn thấy <strong>cùng một ảnh chụp</strong> của DB — chạy rời nhau thì <code>data</code> và <code>total</code> có thể lệch' },
+    { id: 'c', text: 'Cả hai truy vấn phải dùng <strong>đúng cùng một <code>where</code></strong>, lệch một điều kiện là số trang sai' },
+    { id: 'd', text: '<code>totalPages</code> sẽ là <strong>0</strong> khi không có bản ghi nào khớp, không phải 1' },
+    { id: 'e', text: '<code>$transaction</code> ở đây giúp hai truy vấn chạy nhanh hơn vì gộp thành một lần đi DB' },
+  ],
+  correct: ['a', 'b', 'c', 'd'],
+  why: `
+    <p><strong>e</strong> sai. <code>$transaction</code> gửi hai lệnh trong một giao dịch để đảm bảo
+    <strong>tính nhất quán</strong>, không phải để tăng tốc. Vẫn là hai truy vấn, DB vẫn làm hai việc.</p>
+
+    <h4>Vì sao phải hỏi hai câu</h4>
+    <ul>
+      <li><code>findMany</code> → lấy <strong>20 dòng</strong> của trang này</li>
+      <li><code>count</code> → đếm <strong>tổng số dòng khớp bộ lọc</strong>, để tính <code>totalPages</code></li>
+    </ul>
+    <p>FE chỉ cầm 20 dòng trong tay, không có cách nào tự biết còn bao nhiêu trang.
+    Muốn vẽ "trang 3/10", muốn khoá nút "Sau" — đều phải dựa vào con số đếm này.</p>
+
+    <h4>Vì sao phải bọc giao dịch</h4>
+    <figure class="dg">
+      <svg viewBox="0 0 620 180" role="img" aria-label="Chay hai truy van roi nhau thi giua chung co the co ban ghi moi chen vao, khien data va total lay tu hai anh chup khac nhau">
+        <defs>
+          <marker id="ar10" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        </defs>
+        <text x="0" y="12" font-size="10.5" font-family="monospace" fill="var(--bad)" letter-spacing="1">CHẠY RỜI NHAU</text>
+        <line x1="0" y1="52" x2="600" y2="52" stroke="currentColor" stroke-width="1" opacity=".35" marker-end="url(#ar10)"/>
+        <circle cx="70" cy="52" r="5" fill="currentColor"/>
+        <text x="70" y="40" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle">findMany</text>
+        <text x="70" y="72" font-size="9.5" font-family="monospace" fill="currentColor" text-anchor="middle">45 dòng</text>
+        <line x1="250" y1="30" x2="250" y2="74" stroke="var(--bad)" stroke-width="1.5"/>
+        <text x="250" y="24" font-size="10" font-family="monospace" fill="var(--bad)" text-anchor="middle">ai đó tạo đơn mới</text>
+        <circle cx="430" cy="52" r="5" fill="currentColor"/>
+        <text x="430" y="40" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle">count</text>
+        <text x="430" y="72" font-size="9.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">46 → totalPages sai</text>
+
+        <line x1="0" y1="104" x2="620" y2="104" stroke="currentColor" stroke-width="1" opacity=".18"/>
+
+        <text x="0" y="128" font-size="10.5" font-family="monospace" fill="var(--ok)" letter-spacing="1">TRONG $transaction</text>
+        <rect x="60" y="140" width="380" height="28" rx="6" fill="none" stroke="var(--ok)" stroke-width="1.5"/>
+        <text x="250" y="159" font-size="11" font-family="monospace" fill="var(--ok)" text-anchor="middle">cả hai đọc CÙNG một ảnh chụp</text>
+        <text x="460" y="159" font-size="10" font-family="monospace" fill="var(--ok)">số liệu khớp nhau</text>
+      </svg>
+      <figcaption>Không bọc giao dịch thì <code>data</code> lấy từ ảnh cũ còn <code>total</code> lấy từ ảnh mới — số liệu tự mâu thuẫn.</figcaption>
+    </figure>
+
+    <h4>c) Cùng một where — cái bẫy khi refactor</h4>
+    <p>Hai truy vấn phải lọc <strong>y hệt nhau</strong>. Thêm điều kiện vào <code>findMany</code> mà quên
+    <code>count</code> thì: dữ liệu đúng nhưng số trang sai, người dùng bấm sang trang 4 thấy trống.</p>
+    <p>Đó là lý do code của bạn dựng <code>where</code> thành <strong>một biến dùng chung</strong>
+    rồi truyền vào cả hai — không phải viết đẹp, mà là chặn đúng lỗi này.</p>
+
+    <h4>d) totalPages = 0 khi rỗng</h4>
+    <pre><code>totalPages: Math.ceil(total / dto.limit)   // total = 0 → 0, KHÔNG phải 1</code></pre>
+    <p>Chi tiết nhỏ nhưng cắn thật ở FE: đoạn kẹp số trang phải viết <code>Math.max(1, totalPages)</code>,
+    không thì kẹp <code>page</code> về 0 và gửi lên BE — mà <code>PaginationDto</code> có
+    <code>@Min(1)</code> nên trả về lỗi 400.</p>
+  `,
+  followups: [
+    { q: '<code>count</code> trên bảng vài triệu dòng có chậm không?',
+      a: '<p>Có, và đây là điểm yếu ít người lường. <code>COUNT(*)</code> có điều kiện <code>WHERE</code> thường phải quét index hoặc cả bảng — trên bảng lớn có thể chậm hơn cả <code>findMany</code>.</p><p>Cách giảm đau: (1) chỉ đếm ở trang đầu rồi cache lại; (2) trả <em>ước lượng</em> thay vì số chính xác cho bảng rất lớn; (3) bỏ hẳn tổng số và chuyển sang cursor.</p>' },
+    { q: 'Vì sao <code>limit</code> phải có <code>@Max(100)</code>?',
+      a: '<p>Vì không chặn thì client gửi <code>?limit=1000000</code> và tự tay biến endpoint phân trang thành endpoint tải toàn bộ bảng — vừa là vấn đề hiệu năng, vừa là hướng tấn công từ chối dịch vụ rẻ tiền.</p><p>Chặn ở DTO là chặn ở lớp ngoài cùng, trước khi chạm tới service.</p>' },
+    { q: '<code>parseSort</code> chỉ nhận field trong danh sách cho phép — vì sao không cho sort tự do?',
+      a: '<p>Vì <code>orderBy</code> ghép thẳng từ chuỗi của client là mở đường cho hai chuyện: sort theo <strong>cột không có index</strong> làm truy vấn chậm khủng khiếp, và sort theo <strong>cột không nên lộ</strong> (vd <code>passwordHash</code>) — thứ tự trả về có thể suy ra thông tin.</p><p>Danh sách trắng là cách chặn đơn giản và chắc chắn nhất.</p>' },
+  ],
+},
+
+{
+  id: 'be-04',
+  section: 'be',
+  topic: 'Phân trang',
+  level: 'khó',
+  multi: true,
+  q: 'Danh sách thông báo sắp xếp mới nhất trước, phân trang bằng <code>page</code>/<code>limit</code>. Người dùng xem trang 1, trong lúc đó có <strong>2 thông báo mới</strong> được tạo. Họ bấm sang trang 2. Chuyện gì xảy ra, và sửa thế nào?',
+  options: [
+    { id: 'a', text: 'Hai bản ghi cuối của trang 1 bị <strong>đẩy xuống</strong> và xuất hiện lại ở đầu trang 2 — người dùng thấy trùng' },
+    { id: 'b', text: 'Nếu là thao tác <strong>xoá</strong> thay vì thêm thì ngược lại: có bản ghi bị <strong>bỏ sót</strong>, không bao giờ được nhìn thấy' },
+    { id: 'c', text: 'Phân trang bằng <strong>cursor</strong> không dính lỗi này, vì nó bám vào một bản ghi cụ thể chứ không phải vị trí đếm được' },
+    { id: 'd', text: 'Đổi sang cursor thì mất khả năng nhảy thẳng tới trang 7 và mất luôn "trang 3/10"' },
+    { id: 'e', text: 'Chỉ cần tăng <code>limit</code> lên là hết' },
+  ],
+  correct: ['a', 'b', 'c', 'd'],
+  why: `
+    <p><strong>e</strong> sai — tăng <code>limit</code> chỉ làm cửa sổ to hơn, không đụng gì tới nguyên nhân.
+    Bản ghi vẫn trôi.</p>
+
+    <h4>Dữ liệu trôi — nhìn cho rõ</h4>
+    <pre><code>lúc xem trang 1:   [A B C D E] [F G H I J]
+                    ─trang 1─   ─trang 2─
+
+có X, Y chèn vào đầu:
+                   [X Y A B C] [D E F G H]
+                    ─trang 1─   ─trang 2─
+                                 ▲ ▲
+                    D và E vừa ở trang 1, giờ lại ở đầu trang 2</code></pre>
+    <p>Người dùng lật sang trang 2 và thấy lại đúng hai dòng vừa đọc. Nếu thao tác là <strong>xoá</strong>
+    thì ngược lại: các bản ghi dồn lên, và có dòng nhảy từ đầu trang 2 lên cuối trang 1
+    <em>sau khi</em> bạn đã rời trang 1 — nó bị <strong>bỏ sót vĩnh viễn</strong>.</p>
+    <div class="flag"><p>Bỏ sót nguy hiểm hơn trùng nhiều. Trùng thì người dùng thấy và bực;
+    bỏ sót thì <strong>không ai biết</strong> — kể cả bạn.</p></div>
+
+    <h4>Gốc rễ: đếm vị trí trên một hàng đang xê dịch</h4>
+    <p><code>OFFSET 20</code> nghĩa là "bỏ qua 20 dòng đầu". Nhưng "20 dòng đầu" là <em>bây giờ</em> —
+    và bây giờ khác lúc bạn xem trang 1. Bạn đang đếm trên một hàng người liên tục có kẻ chen vào.</p>
+
+    <h4>Cursor: bám vào bản ghi, không bám vào vị trí</h4>
+    <pre><code>-- thay vi "bo qua 20 dong"
+WHERE created_at &lt; '2026-08-19 10:30:00'
+ORDER BY created_at DESC
+LIMIT 20</code></pre>
+    <p>Câu hỏi đổi từ <em>"cho tôi dòng thứ 21 đến 40"</em> thành <em>"cho tôi 20 dòng đứng sau bản ghi X"</em>.
+    Chèn thêm bao nhiêu ở đầu cũng không ảnh hưởng — X vẫn là X.</p>
+    <p>Thêm một lợi ích lớn: DB dùng index nhảy thẳng, nên <strong>trang 1 và trang 5.000 nhanh như nhau</strong>.
+    Trong khi <code>OFFSET 100000</code> bắt DB duyệt và vứt bỏ 100.000 dòng trước khi lấy được dòng cần.</p>
+
+    <div class="tbl-wrap"><table>
+      <tr><th></th><th>Offset (page/limit)</th><th>Cursor</th></tr>
+      <tr><td>Nhảy thẳng tới trang 7</td><td>Được</td><td><strong>Không</strong></td></tr>
+      <tr><td>Hiện "trang 3/10"</td><td>Được</td><td><strong>Không</strong> (không biết tổng)</td></tr>
+      <tr><td>Trang sâu</td><td><strong>Chậm dần</strong></td><td>Nhanh đều</td></tr>
+      <tr><td>Dữ liệu trôi</td><td><strong>Có</strong></td><td>Không</td></tr>
+      <tr><td>Độ phức tạp</td><td>Thấp</td><td>Cao hơn</td></tr>
+    </table></div>
+
+    <h4>Chọn cái nào</h4>
+    <div class="script">
+      <p><strong>Bảng quản trị</strong> — cần nhảy trang, cần biết tổng, dữ liệu vài nghìn dòng → <strong>offset</strong>.</p>
+      <p><strong>Feed cuộn vô tận</strong> — thông báo, tin nhắn, dữ liệu lớn ghi liên tục → <strong>cursor</strong>.</p>
+    </div>
+    <p>Dự án Marketplace dùng offset cho mọi danh sách, và đó là lựa chọn <strong>đúng</strong> cho bảng quản trị.
+    Nhưng riêng <em>thông báo</em> và <em>tin nhắn</em> thì đúng kiểu feed — đó là hai chỗ đáng cân nhắc đổi sang cursor.</p>
+  `,
+  followups: [
+    { q: 'Cursor nên dùng cột nào? Chỉ <code>createdAt</code> có đủ không?',
+      a: '<p>Không đủ. Hai bản ghi tạo cùng một mili-giây thì <code>created_at &lt; X</code> sẽ bỏ sót hoặc lặp. Phải có <strong>khoá phá hoà</strong>:</p><pre><code>WHERE (created_at, id) &lt; (:cursorTime, :cursorId)\nORDER BY created_at DESC, id DESC</code></pre><p>Nguyên tắc chung: cột sắp xếp phải <strong>ổn định</strong> (không đổi giá trị) và <strong>duy nhất</strong> khi ghép lại.</p>' },
+    { q: 'Có cách nào giữ ưu điểm cả hai không?',
+      a: '<p>Có vài lối rẽ thực dụng:</p><ul><li><strong>Cursor cho cuộn, offset cho nhảy</strong> — mặc định cuộn bằng cursor, chỉ khi người dùng gõ số trang mới dùng offset.</li><li><strong>Đóng băng ảnh chụp</strong> — trang 1 trả về kèm mốc thời gian, các trang sau thêm <code>WHERE created_at &lt;= :snapshot</code>. Hết trôi mà vẫn nhảy trang được. Đổi lại: người dùng không thấy bản ghi mới cho tới khi tải lại.</li><li><strong>Đếm riêng</strong> — cursor cho dữ liệu, một endpoint <code>count</code> riêng cho con số tổng.</li></ul>' },
+    { q: 'Người phỏng vấn hỏi "khi nào offset đủ tốt?" thì trả lời sao?',
+      a: '<p>Trả lời bằng con số và điều kiện, đừng nói chung chung:</p><p>"Offset đủ tốt khi tổng số dòng nằm trong khoảng vài chục nghìn, người dùng hiếm khi đi quá vài trang đầu, và dữ liệu không bị ghi liên tục trong lúc đọc. Bảng quản trị gần như luôn thoả cả ba. Tôi chỉ đổi sang cursor khi thấy trang sâu bắt đầu chậm, hoặc khi người dùng báo thấy bản ghi trùng lặp."</p>' },
+  ],
+},
 ];
 
 const st = {
