@@ -1331,6 +1331,121 @@ onSettled: () =&gt; {
   ],
 },
 
+{
+  id: 'fe-07',
+  section: 'fe',
+  topic: 'TanStack Query',
+  level: 'khó',
+  multi: true,
+  q: 'Người dùng bấm "Hoàn thành đơn" rồi <strong>lập tức bấm back</strong>. Request về sau đó 300ms, lúc component đã bị gỡ. Nhận định nào <strong>đúng</strong>?',
+  code: `// ① khai ở hook
+useMutation({
+  mutationFn: completeOrder,
+  onSuccess: () => qc.invalidateQueries({ queryKey: ['orders'] }),
+});
+
+// ② truyền lúc bấm nút
+mutate({ id, price }, {
+  onSuccess: () => navigate(ROUTES.ORDERS),
+});`,
+  options: [
+    { id: 'a', text: '① <strong>vẫn chạy</strong> — callback khai ở hook không phụ thuộc component còn sống hay không' },
+    { id: 'b', text: '② <strong>không chạy</strong> — callback truyền lúc gọi bị bỏ qua khi observer hết listener' },
+    { id: 'c', text: 'Đây là lý do <code>invalidateQueries</code> nên đặt ở hook chứ không ở component' },
+    { id: 'd', text: 'Cả hai đều không chạy, vì component đã unmount' },
+    { id: 'e', text: 'Cả hai đều chạy, React chỉ cảnh báo "setState on unmounted component"' },
+  ],
+  correct: ['a', 'b', 'c'],
+  why: `
+    <p><strong>d</strong> và <strong>e</strong> đều sai, và sai theo hai hướng ngược nhau — một cái tưởng
+    unmount là chết hết, một cái tưởng unmount chẳng ảnh hưởng gì. Sự thật nằm ở giữa, và ranh giới
+    chính là <code>hasListeners()</code>.</p>
+
+    <h4>Dữ liệu và người xem là hai thứ tách rời</h4>
+    <p>Trong TanStack Query, <strong>dữ liệu không nằm trong component</strong>. Nó nằm trong cache,
+    tách hẳn ra. Component chỉ <em>đăng ký xem</em> thông qua một vật trung gian gọi là <strong>Observer</strong>.</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 210" role="img" aria-label="Hai component đăng ký xem cùng một query thông qua hai observer riêng; khi cả hai unmount thì query không còn observer nào và trở thành inactive">
+        <defs>
+          <marker id="ar9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        </defs>
+
+        <rect x="0" y="18" width="118" height="34" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="59" y="39" font-size="11" font-family="monospace" fill="currentColor" text-anchor="middle">Component A</text>
+        <rect x="0" y="86" width="118" height="34" rx="7" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="59" y="107" font-size="11" font-family="monospace" fill="currentColor" text-anchor="middle">Component B</text>
+
+        <line x1="118" y1="35" x2="158" y2="35" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar9)"/>
+        <line x1="118" y1="103" x2="158" y2="103" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar9)"/>
+
+        <rect x="164" y="18" width="140" height="34" rx="7" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="234" y="39" font-size="11" font-family="monospace" fill="var(--accent)" text-anchor="middle">Observer A</text>
+        <rect x="164" y="86" width="140" height="34" rx="7" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="234" y="107" font-size="11" font-family="monospace" fill="var(--accent)" text-anchor="middle">Observer B</text>
+
+        <line x1="304" y1="35" x2="380" y2="62" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar9)"/>
+        <line x1="304" y1="103" x2="380" y2="76" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar9)"/>
+
+        <rect x="388" y="48" width="220" height="44" rx="8" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <text x="498" y="68" font-size="11" font-family="monospace" fill="currentColor" text-anchor="middle">Query ['orders','list']</text>
+        <text x="498" y="83" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle" opacity=".75">1 bản dữ liệu duy nhất</text>
+
+        <line x1="0" y1="146" x2="620" y2="146" stroke="currentColor" stroke-width="1" opacity=".2"/>
+        <text x="0" y="170" font-size="11" font-family="monospace" fill="currentColor">Mỗi lần gọi useQuery / useMutation = tạo MỘT Observer.</text>
+        <text x="0" y="188" font-size="11" font-family="monospace" fill="var(--bad)">Component unmount → Observer huỷ đăng ký → hasListeners() = false</text>
+      </svg>
+      <figcaption><code>hasListeners()</code> là câu hỏi đặt cho Observer: "còn ai đang lắng nghe tôi không?"</figcaption>
+    </figure>
+
+    <h4>Nó chi phối nhiều thứ hơn bạn tưởng</h4>
+    <p>Cùng một khái niệm "còn ai xem không" giải thích được hàng loạt hành vi mà bạn tưởng là rời rạc:</p>
+    <div class="tbl-wrap"><table>
+      <tr><th>Hành vi</th><th>Thực chất là</th></tr>
+      <tr><td>Đồng hồ <code>gcTime</code> bắt đầu chạy</td><td>Query không còn observer nào</td></tr>
+      <tr><td><code>refetchOnWindowFocus</code> chỉ tải lại vài query</td><td>Chỉ query <strong>đang có người xem</strong> mới tải ngay</td></tr>
+      <tr><td><code>invalidateQueries</code> gọi API ngay hay chỉ đánh dấu cũ</td><td>Có observer → gọi ngay. Không có → chỉ đánh dấu</td></tr>
+      <tr><td>Callback truyền lúc <code>mutate()</code> bị bỏ qua</td><td>Observer hết listener</td></tr>
+    </table></div>
+    <div class="flag"><p>Ở câu về <code>staleTime</code>/<code>gcTime</code> có câu "đồng hồ gcTime chỉ chạy khi
+    không còn ai xem" — <strong>đó chính là <code>hasListeners()</code></strong>. Hai câu ghép lại thành
+    một khái niệm duy nhất.</p></div>
+
+    <h4>Dòng code thật</h4>
+    <p>Trong <code>mutationObserver.js</code> của <code>@tanstack/query-core</code>:</p>
+    <pre><code>if (this._mutateOptions &amp;&amp; this.hasListeners()) {
+  // chỉ ở đây mới gọi onSuccess / onError / onSettled truyền lúc mutate()
+}</code></pre>
+    <p>Callback khai ở hook thì nằm ở tầng <code>Mutation</code>, không đi qua kiểm tra này — nên luôn chạy.</p>
+
+    <h4>Đây là thiết kế có chủ đích, không phải lỗi</h4>
+    <p>Callback truyền lúc gọi thường làm việc <strong>thuộc về màn hình đó</strong>: chuyển trang, đóng modal,
+    focus lại ô nhập, cuộn lên đầu. Màn hình đã biến mất mà vẫn chạy thì hoặc là lỗi, hoặc là hành vi kỳ quặc —
+    đang ở màn khác tự nhiên bị đá đi nơi khác.</p>
+    <p>Còn callback ở hook làm việc <strong>thuộc về tầng dữ liệu</strong>: làm mới cache, ghi log, đồng bộ.
+    Những việc đó phải xong cho bằng được, không phụ thuộc ai đang nhìn.</p>
+
+    <h4>Quy tắc rút ra</h4>
+    <div class="script">
+      <p><strong>Phải xảy ra cho bằng được</strong> (invalidate, ghi log, đồng bộ) → khai ở <strong>hook</strong></p>
+      <p><strong>Chỉ có nghĩa khi người dùng còn ở đó</strong> (chuyển trang, đóng modal, toast) → truyền lúc <strong>gọi</strong></p>
+    </div>
+    <p>Đây cũng là lý do thật sự vì sao <code>invalidateQueries</code> phải nằm trong <code>onSuccess</code>
+    của hook: không phải cho gọn code, mà vì <strong>để ở component thì nó sẽ im lặng không chạy</strong>
+    khi người dùng rời màn hình sớm. Cache giữ dữ liệu cũ, và <em>không có lỗi nào báo cho bạn biết</em>.</p>
+  `,
+  followups: [
+    { q: 'Ba tầng khai callback cho mutation chạy theo thứ tự nào?',
+      a: '<p>Đọc từ mã nguồn <code>mutation.js</code>, thứ tự là <strong>cache → hook → lúc gọi</strong>:</p><pre><code>① MutationCache.onMutate\n② useMutation.onMutate\n   → mutationFn chạy\n③ Cache.onSuccess / onError\n④ hook.onSuccess / onError\n⑤ mutate().onSuccess / onError     ← qua hasListeners()\n⑥ Cache.onSettled\n⑦ hook.onSettled\n⑧ mutate().onSettled               ← qua hasListeners()</code></pre>' },
+    { q: '<code>useQuery</code> có <code>onSuccess</code> / <code>onError</code> không?',
+      a: '<p><strong>Không, từ v5 đã bị xoá hẳn</strong> — không phải deprecated. Tôi kiểm <code>queryObserver.js</code>: 0 lần xuất hiện.</p><p>Lý do bỏ: nó chạy theo <em>từng component đang xem</em>, không phải theo từng lần gọi API. Ba component cùng dùng một query thì chạy ba lần; lấy từ cache thì không chạy lần nào. Không ai đoán nổi nó chạy mấy lần.</p><p>Thay bằng: <code>select</code> để biến đổi dữ liệu, tính thẳng lúc render thay vì đưa vào state, và <code>QueryCache({ onError })</code> cho toast lỗi toàn app — đúng cách dự án đang làm.</p>' },
+    { q: 'Viết <code>onSuccess</code> dạng <code>async</code> thì có gì khác?',
+      a: '<p>Trong mã nguồn, <strong>mọi móc của mutation đều được <code>await</code></strong>. Nên mutation chưa được coi là xong cho tới khi callback async chạy hết — <code>isPending</code> vẫn <code>true</code>.</p><p>Dùng có chủ đích thì hay: <code>await qc.invalidateQueries(...)</code> khiến nút vẫn quay cho tới khi danh sách thật sự tải xong, người dùng không thấy dữ liệu cũ chớp qua.</p>' },
+    { q: 'Vậy khi nào một query được coi là "active"?',
+      a: '<p>Khi có <strong>ít nhất một observer</strong> đang đăng ký — tức ít nhất một component đang mount và gọi <code>useQuery</code> với khoá đó.</p><p>Từ đó suy ra hết: query active thì <code>invalidateQueries</code> gọi lại ngay và <code>refetchOnWindowFocus</code> có tác dụng; query inactive thì chỉ bị đánh dấu cũ và bắt đầu đếm <code>gcTime</code>.</p>' },
+  ],
+},
+
 /* ---------------------------------------------------------- BE */
 {
   id: 'be-01',
