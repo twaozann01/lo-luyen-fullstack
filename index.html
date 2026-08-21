@@ -875,6 +875,14 @@ Client state  →  FE giữ BẢN GỐC  →  không có chuyện đó</code></p
       <figcaption>Hàm trả về trong <code>useEffect</code> chạy trước mỗi lần effect chạy lại và một lần khi unmount. Không có nó, mỗi lần vào màn hình lại chồng thêm một listener.</figcaption>
     </figure>
 
+    <div class="flag"><p><strong>Chỗ tinh tế nhất:</strong> cleanup phải là
+    <code>socket.off('position', handler)</code>, <strong>KHÔNG phải</strong> <code>socket.disconnect()</code>.</p>
+    <p>Vì socket trong dự án là <strong>singleton toàn app</strong> (<code>createNamespaceSocket</code> giữ
+    một instance duy nhất cho mỗi namespace). Ngắt nó là cắt luôn thông báo, chat và mọi thứ realtime khác
+    của cả ứng dụng. Chỉ gỡ <em>listener của mình</em>.</p>
+    <p>Và <code>off</code> cần <strong>đúng tham chiếu hàm</strong> đã đăng ký — truyền một arrow function
+    mới toanh vào <code>off</code> thì không gỡ được gì cả. Đó là lý do phải đặt tên cho handler.</p></div>
+
     <h4>Bản sửa</h4>
     <pre><code>useEffect(() => {
   let alive = true;                       // chống lỗi (c)
@@ -1875,6 +1883,116 @@ ids.filter(id =&gt; s.has(id))</code></pre>
   ],
 },
 
+{
+  id: 'fe-12',
+  section: 'fe',
+  topic: 'Realtime',
+  level: 'trung bình',
+  multi: true,
+  q: 'Màn theo dõi vị trí thợ ban đầu làm bằng cách gọi API <strong>mỗi 3 giây</strong>. Đổi sang WebSocket. Nhận định nào <strong>đúng</strong>?',
+  options: [
+    { id: 'a', text: 'Server <strong>đẩy được ngay</strong> khi có dữ liệu, không phải chờ client hỏi' },
+    { id: 'b', text: 'Kết nối khởi đầu bằng một request HTTP có header <code>Upgrade: websocket</code>, server trả <code>101 Switching Protocols</code>' },
+    { id: 'c', text: 'Vì khởi đầu như HTTP nên nó đi lọt qua proxy và tường lửa, dùng chung cổng 443 và chứng chỉ TLS' },
+    { id: 'd', text: '<code>socket.io</code> chính là WebSocket, chỉ là tên gọi khác' },
+    { id: 'e', text: 'Có WebSocket rồi thì nên chuyển hết REST sang WebSocket cho đồng bộ' },
+  ],
+  correct: ['a', 'b', 'c'],
+  why: `
+    <h4>Vì sao polling không cứu được</h4>
+    <pre><code>khách: "vị trí đâu?" → server: "chưa đổi"    (giây 0)
+khách: "vị trí đâu?" → server: "chưa đổi"    (giây 3)
+khách: "vị trí đâu?" → server: "đây"         (giây 6)</code></pre>
+    <ul>
+      <li><strong>Phí</strong> — phần lớn lần hỏi nhận về "chưa có gì mới"</li>
+      <li><strong>Trễ</strong> — vị trí đổi ở giây 3.1 thì tới giây 6 khách mới thấy</li>
+      <li><strong>Tốn</strong> — 1.000 khách × 20 lần/phút = 20.000 request/phút, gần hết chỉ để trả lời "chưa"</li>
+    </ul>
+    <p>Muốn bớt trễ thì hỏi dày hơn, mà hỏi dày hơn thì càng tốn. <strong>Không có đường ra</strong> —
+    đó là lý do phải đổi cơ chế chứ không phải chỉnh tham số.</p>
+
+    <h4>WebSocket: mở một đường dây rồi giữ nguyên</h4>
+    <figure class="dg">
+      <svg viewBox="0 0 620 200" role="img" aria-label="HTTP mo dong lien tuc cho tung cau hoi, con WebSocket mo mot lan roi giu de hai ben day du lieu bat cu luc nao">
+        <defs>
+          <marker id="ar12" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+          <marker id="ar12a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/></marker>
+        </defs>
+
+        <text x="0" y="12" font-size="10.5" font-family="monospace" fill="currentColor" letter-spacing="1">HTTP</text>
+        <text x="0" y="34" font-size="10" font-family="monospace" fill="currentColor">client</text>
+        <text x="250" y="34" font-size="10" font-family="monospace" fill="currentColor">server</text>
+        <line x1="46" y1="46" x2="46" y2="96" stroke="currentColor" stroke-width="1" opacity=".4"/>
+        <line x1="266" y1="46" x2="266" y2="96" stroke="currentColor" stroke-width="1" opacity=".4"/>
+        <line x1="46" y1="54" x2="262" y2="54" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar12)"/>
+        <line x1="266" y1="66" x2="50" y2="66" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar12)"/>
+        <line x1="46" y1="80" x2="262" y2="80" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar12)"/>
+        <line x1="266" y1="92" x2="50" y2="92" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar12)"/>
+        <text x="80" y="114" font-size="9.5" font-family="monospace" fill="currentColor" opacity=".75">mỗi lần một cuộc, server không tự nói được</text>
+
+        <text x="360" y="12" font-size="10.5" font-family="monospace" fill="var(--accent)" letter-spacing="1">WEBSOCKET</text>
+        <text x="360" y="34" font-size="10" font-family="monospace" fill="currentColor">client</text>
+        <text x="560" y="34" font-size="10" font-family="monospace" fill="currentColor">server</text>
+        <line x1="392" y1="46" x2="392" y2="110" stroke="var(--accent)" stroke-width="1.6"/>
+        <line x1="576" y1="46" x2="576" y2="110" stroke="var(--accent)" stroke-width="1.6"/>
+        <line x1="392" y1="52" x2="572" y2="52" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#ar12a)"/>
+        <text x="484" y="46" font-size="9" font-family="monospace" fill="var(--accent)" text-anchor="middle">mở 1 lần</text>
+        <line x1="576" y1="70" x2="396" y2="70" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#ar12a)"/>
+        <line x1="576" y1="86" x2="396" y2="86" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#ar12a)"/>
+        <line x1="392" y1="102" x2="572" y2="102" stroke="var(--accent)" stroke-width="1.3" marker-end="url(#ar12a)"/>
+        <text x="420" y="126" font-size="9.5" font-family="monospace" fill="var(--accent)">giữ mãi, hai bên đẩy bất cứ lúc nào</text>
+
+        <line x1="0" y1="146" x2="620" y2="146" stroke="currentColor" stroke-width="1" opacity=".2"/>
+        <text x="0" y="170" font-size="11" font-family="monospace" fill="currentColor">Trễ từ ~3 giây xuống vài chục mili-giây,</text>
+        <text x="0" y="188" font-size="11" font-family="monospace" fill="currentColor">và không còn request rỗng nào.</text>
+      </svg>
+      <figcaption>Server có tin mới là đẩy ngay, không chờ ai hỏi.</figcaption>
+    </figure>
+
+    <h4>b) và c) — cách nó bắt đầu, và vì sao điều đó quan trọng</h4>
+    <pre><code>GET /socket.io/ HTTP/1.1
+Upgrade: websocket
+Connection: Upgrade
+
+→  HTTP/1.1 101 Switching Protocols</code></pre>
+    <p>Từ giây phút nhận <code>101</code>, <strong>ống dẫn đó không còn là HTTP nữa</strong> —
+    nó thành một đường hai chiều tự do.</p>
+    <p>Vì khởi đầu bằng HTTP nên nó đi lọt qua tường lửa và proxy như web thường, dùng chung
+    cổng 443 và chứng chỉ TLS. Đó chính là lý do WebSocket thắng các giải pháp realtime cũ.</p>
+    <div class="flag"><p>Cũng vì thế mà proxy phải được khai báo riêng. Trong <code>vite.config.ts</code>:</p>
+    <pre><code>'/socket.io': { target: 'http://localhost:8000', ws: true }</code></pre>
+    <p>Cờ <code>ws: true</code> bảo proxy: "gặp yêu cầu nâng cấp thì cho qua, đừng xử lý như HTTP thường".
+    Quên cờ này là realtime chết ở môi trường dev mà không hiểu vì sao.</p></div>
+
+    <h4>d) socket.io KHÔNG phải WebSocket</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th>WebSocket thuần</th><th>socket.io thêm</th></tr>
+      <tr><td>Chỉ gửi/nhận chuỗi byte</td><td><strong>Sự kiện có tên</strong> — <code>socket.on('position', ...)</code></td></tr>
+      <tr><td>Đứt là đứt hẳn</td><td><strong>Tự kết nối lại</strong>, có backoff</td></tr>
+      <tr><td>Một đường duy nhất</td><td><strong>Namespace</strong> (<code>/chat</code>, <code>/notifications</code>) và <strong>room</strong></td></tr>
+      <tr><td>Không biết ai nhận được</td><td><strong>Ack</strong> — xác nhận đã nhận</td></tr>
+    </table></div>
+    <p>Trong dự án: <code>@WebSocketGateway({ namespace: '/chat' })</code> rồi
+    <code>client.join(ROOM(conversationId))</code> — mỗi hội thoại một phòng, emit vào phòng thì
+    chỉ người trong phòng nhận. Đó là tính năng của socket.io, WebSocket thuần không có.</p>
+
+    <h4>e) Đừng chuyển hết sang WebSocket</h4>
+    <p>REST vẫn tốt hơn cho phần lớn việc: có cache HTTP, có mã trạng thái, dễ debug bằng curl,
+    dễ ghi log, dễ retry, không cần giữ kết nối. WebSocket chỉ đáng cho thứ <strong>server cần chủ động
+    báo</strong>: vị trí realtime, thông báo, tin nhắn, "đang gõ".</p>
+    <p>Chính dự án bạn làm đúng vậy — chat <strong>gửi tin bằng REST</strong> (để lưu vào DB),
+    còn socket chỉ lo phát lại realtime và trạng thái "đang gõ".</p>
+  `,
+  followups: [
+    { q: 'Token hết hạn thì kết nối WebSocket có tự biết không?',
+      a: '<p>Không. Token được kiểm <strong>một lần lúc bắt tay</strong> (<code>verifyHandshakeToken</code>), vì kết nối chỉ mở một lần rồi giữ mãi. Sau đó dù token hết hạn, đường dây vẫn mở.</p><p>Nên khi refresh token, phải <strong>mở lại kết nối</strong> để server bắt tay lại với token mới. Đó chính là logic trong <code>createNamespaceSocket</code>: cùng token thì tái dùng, token đổi thì tạo socket mới.</p>' },
+    { q: 'Long-polling là gì, khác polling thường ra sao?',
+      a: '<p>Client hỏi, nhưng server <strong>giữ request không trả lời</strong> cho tới khi có dữ liệu mới (hoặc hết thời gian chờ). Có tin là trả ngay, client hỏi lại tiếp.</p><p>Đỡ trễ hơn polling nhiều, nhưng vẫn tốn: mỗi lần có tin là một vòng đóng–mở kết nối, và server phải giữ hàng nghìn request treo. socket.io dùng long-polling làm <strong>phương án dự phòng</strong> khi môi trường chặn WebSocket.</p>' },
+    { q: 'Vì sao dự án khai <code>transports: [\'websocket\']</code> mà không để mặc định?',
+      a: '<p>Mặc định socket.io <em>bắt đầu bằng long-polling rồi mới nâng cấp lên WebSocket</em> — an toàn nhưng tốn một nhịp và sinh vài request thừa.</p><p>Ép thẳng <code>[\'websocket\']</code> thì kết nối nhanh hơn và log sạch hơn. Đổi lại: môi trường nào chặn WebSocket sẽ <strong>không có đường lùi</strong> — chấp nhận được cho app nội bộ, cân nhắc lại nếu người dùng ở sau proxy công ty khắt khe.</p>' },
+  ],
+},
+
 /* ---------------------------------------------------------- BE */
 {
   id: 'be-01',
@@ -2162,6 +2280,110 @@ LIMIT 20</code></pre>
       a: '<p>Có vài lối rẽ thực dụng:</p><ul><li><strong>Cursor cho cuộn, offset cho nhảy</strong> — mặc định cuộn bằng cursor, chỉ khi người dùng gõ số trang mới dùng offset.</li><li><strong>Đóng băng ảnh chụp</strong> — trang 1 trả về kèm mốc thời gian, các trang sau thêm <code>WHERE created_at &lt;= :snapshot</code>. Hết trôi mà vẫn nhảy trang được. Đổi lại: người dùng không thấy bản ghi mới cho tới khi tải lại.</li><li><strong>Đếm riêng</strong> — cursor cho dữ liệu, một endpoint <code>count</code> riêng cho con số tổng.</li></ul>' },
     { q: 'Người phỏng vấn hỏi "khi nào offset đủ tốt?" thì trả lời sao?',
       a: '<p>Trả lời bằng con số và điều kiện, đừng nói chung chung:</p><p>"Offset đủ tốt khi tổng số dòng nằm trong khoảng vài chục nghìn, người dùng hiếm khi đi quá vài trang đầu, và dữ liệu không bị ghi liên tục trong lúc đọc. Bảng quản trị gần như luôn thoả cả ba. Tôi chỉ đổi sang cursor khi thấy trang sâu bắt đầu chậm, hoặc khi người dùng báo thấy bản ghi trùng lặp."</p>' },
+  ],
+},
+
+{
+  id: 'be-05',
+  section: 'be',
+  topic: 'Realtime',
+  level: 'khó',
+  multi: true,
+  q: 'Chat realtime chạy hoàn hảo ở máy dev. Lên production nhân bản <strong>3 instance</strong> sau load balancer thì tin nhắn <strong>lúc tới lúc không</strong>. Nhận định nào <strong>đúng</strong>?',
+  options: [
+    { id: 'a', text: 'Hai người trong cùng hội thoại có thể nối vào <strong>hai instance khác nhau</strong>; instance này emit thì instance kia không hề biết' },
+    { id: 'b', text: 'Cần <strong>adapter Redis pub/sub</strong> để phát sự kiện xuyên instance' },
+    { id: 'c', text: 'Máy dev chỉ chạy <strong>một instance</strong> nên lỗi này không bao giờ lộ ra ở đó' },
+    { id: 'd', text: '<strong>Sticky session</strong> là đủ để giải quyết' },
+    { id: 'e', text: 'Tăng số instance lên sẽ làm lỗi bớt xảy ra' },
+  ],
+  correct: ['a', 'b', 'c'],
+  why: `
+    <p><strong>e</strong> ngược hẳn: càng nhiều instance thì xác suất hai người rơi vào hai máy khác nhau
+    <strong>càng cao</strong>. Với 3 instance, hai người cùng máy chỉ khoảng 1/3 — khớp đúng triệu chứng
+    "lúc tới lúc không".</p>
+
+    <h4>Vấn đề: room chỉ tồn tại trong bộ nhớ của MỘT tiến trình</h4>
+    <p><code>client.join(ROOM(id))</code> và <code>server.to(ROOM(id)).emit(...)</code> đều thao tác trên
+    một bảng nằm trong <strong>RAM của instance đó</strong>. Instance B không có cách nào biết instance A
+    đang giữ những ai.</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 250" role="img" aria-label="Khong co Redis thi instance B emit khong toi duoc nguoi dung dang noi vao instance A; co Redis pub sub thi su kien duoc phat xuyen instance">
+        <defs>
+          <marker id="ar13" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+          <marker id="ar13b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--bad)"/></marker>
+          <marker id="ar13g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--ok)"/></marker>
+        </defs>
+
+        <text x="0" y="12" font-size="10.5" font-family="monospace" fill="var(--bad)" letter-spacing="1">KHÔNG CÓ REDIS</text>
+        <text x="8" y="46" font-size="10.5" font-family="monospace" fill="currentColor">thợ</text>
+        <line x1="40" y1="42" x2="86" y2="42" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar13)"/>
+        <rect x="92" y="28" width="104" height="30" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="144" y="48" font-size="10.5" font-family="monospace" fill="currentColor" text-anchor="middle">instance B</text>
+        <line x1="196" y1="43" x2="300" y2="43" stroke="var(--bad)" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#ar13b)"/>
+        <text x="248" y="36" font-size="9.5" font-family="monospace" fill="var(--bad)" text-anchor="middle">emit</text>
+        <text x="310" y="47" font-size="11" font-family="monospace" fill="var(--bad)">✕ không tới được</text>
+
+        <text x="8" y="92" font-size="10.5" font-family="monospace" fill="currentColor">khách</text>
+        <line x1="56" y1="88" x2="86" y2="88" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar13)"/>
+        <rect x="92" y="74" width="104" height="30" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="144" y="94" font-size="10.5" font-family="monospace" fill="currentColor" text-anchor="middle">instance A</text>
+        <text x="210" y="94" font-size="10" font-family="monospace" fill="currentColor" opacity=".7">room nằm trong RAM của A</text>
+
+        <line x1="0" y1="126" x2="620" y2="126" stroke="currentColor" stroke-width="1" opacity=".2"/>
+
+        <text x="0" y="150" font-size="10.5" font-family="monospace" fill="var(--ok)" letter-spacing="1">CÓ REDIS ADAPTER</text>
+        <text x="8" y="186" font-size="10.5" font-family="monospace" fill="currentColor">thợ</text>
+        <line x1="40" y1="182" x2="86" y2="182" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar13)"/>
+        <rect x="92" y="168" width="104" height="30" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="144" y="188" font-size="10.5" font-family="monospace" fill="currentColor" text-anchor="middle">instance B</text>
+
+        <line x1="196" y1="183" x2="256" y2="200" stroke="var(--ok)" stroke-width="1.4" marker-end="url(#ar13g)"/>
+        <text x="214" y="214" font-size="9" font-family="monospace" fill="var(--ok)">publish</text>
+
+        <rect x="262" y="188" width="106" height="30" rx="6" fill="none" stroke="var(--ok)" stroke-width="1.6"/>
+        <text x="315" y="208" font-size="10.5" font-family="monospace" fill="var(--ok)" text-anchor="middle">Redis pub/sub</text>
+
+        <line x1="368" y1="200" x2="428" y2="183" stroke="var(--ok)" stroke-width="1.4" marker-end="url(#ar13g)"/>
+        <text x="374" y="214" font-size="9" font-family="monospace" fill="var(--ok)">subscribe</text>
+
+        <rect x="434" y="168" width="104" height="30" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="486" y="188" font-size="10.5" font-family="monospace" fill="currentColor" text-anchor="middle">instance A</text>
+        <line x1="538" y1="183" x2="576" y2="183" stroke="var(--ok)" stroke-width="1.3" marker-end="url(#ar13g)"/>
+        <text x="584" y="187" font-size="10.5" font-family="monospace" fill="currentColor">khách</text>
+      </svg>
+      <figcaption>Redis đứng giữa làm đường truyền tin: instance nào emit cũng phát lên Redis, mọi instance khác nghe và chuyển tiếp cho client của mình.</figcaption>
+    </figure>
+
+    <h4>c) Vì sao dev không bao giờ thấy lỗi này</h4>
+    <p>Một tiến trình thì mọi client đều nằm chung một bảng room — luôn tới. Đây là loại lỗi
+    <strong>chỉ xuất hiện khi nhân bản</strong>, nên nó lọt qua toàn bộ quá trình phát triển và test
+    rồi mới nổ ở production.</p>
+    <div class="flag"><p>Cùng họ với nó: cache trong bộ nhớ tiến trình, biến đếm toàn cục, cron chạy ở mọi
+    instance, session lưu trong RAM. Tất cả đều <strong>đúng khi chạy một máy, sai khi chạy nhiều máy</strong>.</p></div>
+
+    <h4>d) Vì sao sticky session KHÔNG đủ — bẫy chính của câu này</h4>
+    <p>Sticky session đảm bảo <strong>một client luôn quay lại đúng một instance</strong>. Hữu ích cho
+    việc kết nối lại, nhưng nó <em>không</em> giải quyết vấn đề ở đây.</p>
+    <p>Vì vấn đề không phải một client nhảy máy, mà là <strong>hai client khác nhau</strong> nằm ở
+    hai máy khác nhau. Sticky có giữ khách dính chặt vào A và thợ dính chặt vào B thì A với B
+    vẫn không nói chuyện được với nhau.</p>
+    <p>Sticky session giải quyết <em>affinity</em>. Redis adapter giải quyết <em>fan-out</em>. Hai vấn đề khác nhau.</p>
+
+    <h4>Trong dự án của bạn</h4>
+    <pre><code>// main.ts
+const redisAdapter = new RedisIoAdapter(...);   // fan-out đa instance</code></pre>
+    <p>Đúng cách. Và lưu ý: adapter này <strong>chỉ lo phát tin</strong>, không lo lưu trữ —
+    tin nhắn vẫn phải ghi vào PostgreSQL qua REST, socket chỉ phát lại bản realtime.</p>
+  `,
+  followups: [
+    { q: 'Redis chết thì chuyện gì xảy ra?',
+      a: '<p>Realtime <strong>xuyên instance</strong> ngừng hoạt động — trong cùng một instance thì vẫn chạy. Triệu chứng y hệt lỗi ban đầu: lúc tới lúc không.</p><p>Vì vậy Redis ở đây là <strong>thành phần sống còn</strong>, không phải phụ trợ. Phải giám sát nó, và nên có cảnh báo khi mất kết nối adapter. Nhưng dữ liệu thì không mất — tin nhắn đã nằm trong PostgreSQL, tải lại trang là thấy đủ.</p>' },
+    { q: 'Vì sao gửi tin bằng REST rồi mới emit, thay vì gửi thẳng qua socket?',
+      a: '<p>Vì <strong>lưu trữ và phát tin là hai việc khác nhau</strong>. REST cho việc ghi: có transaction, có validate DTO, có guard phân quyền, có audit log, retry được, và nếu socket đứt thì tin vẫn được lưu.</p><p>Socket chỉ lo phát lại cho người đang online. Gửi thẳng qua socket thì bạn phải dựng lại toàn bộ lớp validate và phân quyền bên trong gateway — và mất tin khi mạng chập chờn.</p>' },
+    { q: 'Có cách nào thay Redis không?',
+      a: '<p>Có vài lựa chọn: adapter dùng <strong>Postgres LISTEN/NOTIFY</strong> (đỡ thêm một hạ tầng nếu đã có Postgres), <strong>NATS</strong> hay <strong>Kafka</strong> cho quy mô lớn, hoặc dịch vụ ngoài như Pusher/Ably để khỏi tự vận hành.</p><p>Với quy mô của dự án này thì Redis là lựa chọn cân bằng nhất — nhẹ, phổ biến, và bạn <strong>đã có sẵn Redis</strong> cho cache và BullMQ rồi.</p>' },
   ],
 },
 ];
