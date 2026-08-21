@@ -1614,6 +1614,143 @@ return (
   ],
 },
 
+{
+  id: 'fe-10',
+  section: 'fe',
+  topic: 'Cấu trúc dữ liệu',
+  level: 'trung bình',
+  multi: true,
+  q: 'Màn hình ghép 1.000 đơn hàng với 5.000 khách hàng bằng đoạn code dưới. Nhận định nào <strong>đúng</strong>?',
+  code: `orders.map(o => ({
+  ...o,
+  customer: customers.find(c => c.id === o.customerId)
+}));`,
+  options: [
+    { id: 'a', text: 'Độ phức tạp là <strong>O(n × m)</strong> — khoảng 5 triệu phép so sánh' },
+    { id: 'b', text: 'Dựng <code>new Map(customers.map(c =&gt; [c.id, c]))</code> trước rồi <code>.get()</code> đưa về <strong>O(n + m)</strong>' },
+    { id: 'c', text: 'Thấy <code>.find()</code> hay <code>.includes()</code> nằm <strong>bên trong</strong> vòng lặp là dấu hiệu cần hash map' },
+    { id: 'd', text: 'Hash map cho tìm kiếm <strong>O(1) trung bình</strong>, nhưng tệ nhất vẫn là O(n)' },
+    { id: 'e', text: 'Thay <code>.find()</code> bằng <code>.filter()[0]</code> sẽ nhanh hơn' },
+  ],
+  correct: ['a', 'b', 'c', 'd'],
+  why: `
+    <p><strong>e</strong> sai và còn tệ hơn: <code>.find()</code> <em>dừng ngay</em> khi gặp phần tử khớp,
+    còn <code>.filter()</code> luôn duyệt hết mảng rồi mới lấy phần tử đầu. Đổi sang filter là làm chậm đi.</p>
+
+    <h4>Vấn đề hash map giải quyết</h4>
+    <p>Tìm một phần tử trong mảng 10.000 phần tử bằng <code>.find()</code> phải <strong>duyệt từ đầu</strong>,
+    xui thì đi hết 10.000 bước — đó là <strong>O(n)</strong>. Hash map làm việc đó trong <strong>1 bước</strong>,
+    bất kể có 10 hay 10 triệu phần tử.</p>
+
+    <h4>Cách nó làm được: biến khoá thành địa chỉ</h4>
+    <figure class="dg">
+      <svg viewBox="0 0 620 230" role="img" aria-label="Ham bam bien khoa thanh chi so ngan, nhay thang toi ngan do; hai khoa cung ngan thi ngan chua mot danh sach ngan">
+        <defs>
+          <marker id="ar11" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        </defs>
+
+        <text x="20" y="26" font-size="12" font-family="monospace" fill="currentColor">khoá "u-8472"</text>
+        <line x1="60" y1="36" x2="60" y2="58" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar11)"/>
+        <rect x="10" y="62" width="106" height="32" rx="7" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <text x="63" y="83" font-size="11" font-family="monospace" fill="var(--accent)" text-anchor="middle">hàm băm</text>
+        <line x1="116" y1="78" x2="168" y2="78" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar11)"/>
+        <text x="196" y="82" font-size="13" font-family="monospace" fill="var(--accent)">17</text>
+
+        <text x="250" y="26" font-size="10.5" font-family="monospace" fill="currentColor" letter-spacing="1">MẢNG CÁC NGĂN</text>
+        <rect x="250" y="36" width="330" height="26" rx="4" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".5"/>
+        <text x="262" y="54" font-size="10" font-family="monospace" fill="currentColor" opacity=".6">ngăn 0</text>
+        <rect x="250" y="66" width="330" height="26" rx="4" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".5"/>
+        <text x="262" y="84" font-size="10" font-family="monospace" fill="currentColor" opacity=".6">…</text>
+        <rect x="250" y="96" width="330" height="30" rx="4" fill="none" stroke="var(--accent)" stroke-width="1.7"/>
+        <text x="262" y="116" font-size="11" font-family="monospace" fill="var(--accent)">ngăn 17</text>
+        <text x="330" y="116" font-size="10.5" font-family="monospace" fill="currentColor">{u-8472, Sơn}</text>
+
+        <line x1="215" y1="88" x2="244" y2="108" stroke="var(--accent)" stroke-width="1.4" marker-end="url(#ar11)"/>
+        <text x="150" y="116" font-size="10" font-family="monospace" fill="var(--accent)">nhảy thẳng, 1 bước</text>
+
+        <line x1="10" y1="150" x2="610" y2="150" stroke="currentColor" stroke-width="1" opacity=".2"/>
+
+        <text x="10" y="172" font-size="10.5" font-family="monospace" fill="var(--bad)" letter-spacing="1">VA CHẠM — hai khoá cùng ra 17</text>
+        <rect x="250" y="182" width="330" height="30" rx="4" fill="none" stroke="var(--bad)" stroke-width="1.5"/>
+        <text x="262" y="202" font-size="11" font-family="monospace" fill="var(--bad)">ngăn 17</text>
+        <text x="330" y="202" font-size="10.5" font-family="monospace" fill="currentColor">[{u-8472,Sơn}, {u-9133,Hà}]</text>
+        <text x="10" y="202" font-size="10" font-family="monospace" fill="currentColor">ngăn chứa một danh sách ngắn</text>
+      </svg>
+      <figcaption>Hàm băm biến khoá thành chỉ số ngăn nên không phải duyệt. Khi hai khoá trùng ngăn, ngăn đó chứa một danh sách ngắn — vẫn nhanh, nhưng đó là lý do nói O(1) <em>trung bình</em>.</figcaption>
+    </figure>
+
+    <h4>Vì sao "O(1) trung bình" chứ không phải luôn luôn</h4>
+    <p>Hàm băm nhả ra số trong khoảng có hạn, nhưng khoá thì vô hạn — nên sớm muộn hai khoá khác nhau
+    ra cùng một số. Gọi là <strong>va chạm</strong>. Cách xử lý phổ biến: mỗi ngăn chứa một danh sách.</p>
+    <div class="tbl-wrap"><table>
+      <tr><th></th><th>Trung bình</th><th>Tệ nhất</th></tr>
+      <tr><td>Tìm / thêm / xoá</td><td><strong>O(1)</strong></td><td>O(n)</td></tr>
+    </table></div>
+    <p>Tệ nhất xảy ra khi hàm băm dở và mọi khoá dồn vào một ngăn — hash map thoái hoá thành danh sách thường.
+    Thư viện chuẩn của JS, Java, Python đều có hàm băm tốt nên thực tế coi như O(1).</p>
+
+    <h4>Sửa đoạn code trong đề</h4>
+    <pre><code>// ❌ O(n × m) — 1.000 × 5.000 = 5 triệu phép so sánh
+orders.map(o =&gt; ({
+  ...o,
+  customer: customers.find(c =&gt; c.id === o.customerId)   // duyệt lại từ đầu MỖI đơn
+}));
+
+// ✅ O(n + m) — 6.000 bước
+const byId = new Map(customers.map(c =&gt; [c.id, c]));      // dựng bảng: 5.000 bước
+orders.map(o =&gt; ({
+  ...o,
+  customer: byId.get(o.customerId)                        // mỗi đơn 1 bước
+}));</code></pre>
+    <div class="script">
+      <p>Từ 5 triệu xuống 6 nghìn — gần <strong>1000 lần</strong>. Và mã còn dễ đọc hơn.</p>
+      <p>Hễ thấy <code>.find()</code> hoặc <code>.includes()</code> nằm <strong>bên trong</strong> một vòng lặp,
+      đó là dấu hiệu cần hash map.</p>
+    </div>
+
+    <h4>Trong JavaScript: Map và Object</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th></th><th><code>Object</code></th><th><code>Map</code></th></tr>
+      <tr><td>Khoá</td><td>Chỉ chuỗi và symbol</td><td><strong>Bất kỳ</strong> — kể cả object, hàm</td></tr>
+      <tr><td>Đếm số phần tử</td><td><code>Object.keys(o).length</code></td><td><code>m.size</code></td></tr>
+      <tr><td>Thứ tự</td><td>Khoá dạng số bị <strong>đẩy lên đầu</strong></td><td>Đúng thứ tự thêm vào</td></tr>
+      <tr><td>Có sẵn khoá lạ</td><td><strong>Có</strong> (kế thừa prototype)</td><td>Không, sạch hoàn toàn</td></tr>
+      <tr><td>Thêm/xoá liên tục</td><td>Chậm hơn</td><td>Nhanh hơn</td></tr>
+    </table></div>
+
+    <div class="flag"><p><strong>Bẫy prototype</strong> — đáng nhớ nhất:</p>
+    <pre><code>const counts = {};
+counts['constructor']   // → ƒ Object()  ← KHÔNG phải undefined!</code></pre>
+    <p>Đếm số lần xuất hiện của từ mà gặp từ <code>constructor</code> thì
+    <code>counts[w] = (counts[w] || 0) + 1</code> cho ra <code>NaN</code>.
+    Dùng <code>new Map()</code> hoặc <code>Object.create(null)</code> là hết.</p></div>
+
+    <p>Quy tắc thực dụng: <strong>dữ liệu có hình dạng cố định</strong> (object cấu hình, DTO) dùng
+    <code>Object</code>. <strong>Từ điển tra cứu động</strong> — khoá do dữ liệu quyết định, thêm bớt
+    liên tục — dùng <code>Map</code>.</p>
+
+    <h4>Set — người anh em</h4>
+    <p><code>Set</code> là hash map chỉ có khoá, không có giá trị. Dùng để hỏi "cái này có trong tập không"
+    trong 1 bước.</p>
+    <pre><code>// ❌ O(n × m)
+ids.filter(id =&gt; selected.includes(id))
+
+// ✅ O(n + m)
+const s = new Set(selected);
+ids.filter(id =&gt; s.has(id))</code></pre>
+  `,
+  followups: [
+    { q: 'Vì sao khoá dạng số trong Object lại bị sắp xếp lại?',
+      a: '<p>Đặc tả JavaScript quy định thứ tự duyệt khoá của object là: <strong>khoá số nguyên theo thứ tự tăng dần trước</strong>, rồi mới tới khoá chuỗi theo thứ tự thêm vào, cuối cùng là symbol.</p><pre><code>Object.keys({ \'2\':\'b\', \'1\':\'a\', \'x\':\'c\' })\n// → [\'1\', \'2\', \'x\']   số bị sắp lại</code></pre><p>Cắn thật khi dùng object làm từ điển theo id số rồi mong giữ đúng thứ tự API trả về. Dùng <code>Map</code> hoặc giữ nguyên mảng.</p>' },
+    { q: 'Dựng Map tốn thêm bộ nhớ và một vòng lặp — khi nào thì KHÔNG đáng?',
+      a: '<p>Khi mảng nhỏ hoặc chỉ tra cứu <strong>một lần</strong>. Tra một lần trên mảng 20 phần tử thì <code>.find()</code> nhanh hơn, vì dựng Map đã tốn 20 bước rồi.</p><p>Hash map thắng khi <strong>tra nhiều lần trên cùng một tập</strong>. Đó chính là hình dạng "find bên trong vòng lặp".</p>' },
+    { q: 'React có liên quan gì tới hash map không?',
+      a: '<p>Có, ở chỗ ít ai để ý: <strong>prop <code>key</code> trong danh sách</strong>. React dùng key để dựng một bảng tra cứu, đối chiếu phần tử cũ với phần tử mới giữa hai lần render.</p><p>Không có key ổn định, React phải so theo vị trí — đó là lý do dùng index làm key gây lỗi khi danh sách bị sắp xếp lại hoặc xoá giữa chừng.</p>' },
+    { q: 'Object có bao giờ nhanh hơn Map không?',
+      a: '<p>Có. Với object <strong>hình dạng cố định</strong>, khoá biết trước lúc viết code, engine JavaScript tối ưu rất mạnh (hidden class / inline cache) — truy cập <code>o.name</code> nhanh hơn <code>m.get(\'name\')</code>.</p><p>Nhưng nếu bạn liên tục thêm khoá mới lúc chạy, engine phải bỏ tối ưu đó, và <code>Map</code> thắng.</p>' },
+  ],
+},
+
 /* ---------------------------------------------------------- BE */
 {
   id: 'be-01',
