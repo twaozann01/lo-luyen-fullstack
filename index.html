@@ -2239,6 +2239,154 @@ async function onSubmit() {
   ],
 },
 
+{
+  id: 'fe-15',
+  section: 'fe',
+  topic: 'React core',
+  level: 'khó',
+  multi: true,
+  q: 'Màn sửa đơn: danh sách bên trái, form bên phải. Bấm sang đơn khác thì form phải sạch. Dev viết <code>useEffect</code> để reset từng ô. Nhận định nào <strong>đúng</strong>?',
+  code: `function OrderPanel({ order }) {
+  const [note, setNote] = useState(order.note);
+  const [urgent, setUrgent] = useState(order.urgent);
+
+  useEffect(() => {
+    setNote(order.note);
+    setUrgent(order.urgent);
+  }, [order.id]);
+
+  return <form>...</form>;
+}`,
+  options: [
+    { id: 'a', text: 'Mỗi lần đổi đơn, React render <strong>hai lần</strong> — và giữa hai lần đó trình duyệt kịp vẽ một khung hình còn mang dữ liệu của <strong>đơn cũ</strong>' },
+    { id: 'b', text: 'Đổi thành <code>&lt;OrderPanel key={order.id} order={order} /&gt;</code> rồi <strong>xoá hẳn</strong> <code>useEffect</code> là ra đúng hành vi mong muốn' },
+    { id: 'c', text: 'Cách dùng effect có một lỗi âm ỉ: thêm một ô state mới thì phải nhớ thêm một dòng reset — quên là bug lặng lẽ' },
+    { id: 'd', text: '<code>key</code> chỉ đặt được cho phần tử sinh ra trong <code>.map()</code>; một component đứng một mình thì React bỏ qua <code>key</code>' },
+    { id: 'e', text: 'Không cần key cũng bỏ được effect: <code>useState(order.note)</code> vốn đã đọc lại <code>order.note</code> ở mỗi lần render, chỉ cần thôi ghi đè nó' },
+    { id: 'f', text: 'Cách dùng key <strong>không miễn phí</strong>: component bị dựng lại nên mọi effect bên trong chạy cleanup rồi setup lại, kể cả effect chẳng liên quan gì tới việc đổi đơn' },
+  ],
+  correct: ['a', 'b', 'c', 'f'],
+  why: `
+    <div class="script">
+      <p>Reset bằng <code>useEffect</code> là <strong>chữa triệu chứng</strong>: form vẫn là form cũ, bạn chỉ chạy theo lau từng ô.</p>
+      <p>Đổi <code>key</code> là chữa nguyên nhân: bạn nói cho React biết đây <strong>không còn là cùng một form</strong> nữa.</p>
+    </div>
+
+    <h4>Vì sao effect luôn chậm một nhịp</h4>
+    <p><code>useEffect</code> chạy <strong>sau khi trình duyệt vẽ xong</strong>. Đó không phải chi tiết vụn vặt —
+    nó là cả vấn đề. Trình tự khi bạn bấm sang đơn mới:</p>
+    <p>React render lại <code>OrderPanel</code> với prop <code>order</code> <em>mới</em>, nhưng state <code>note</code>
+    thì vẫn là chữ của đơn <em>cũ</em> — vì chưa có ai đổi nó cả. React đưa kết quả đó xuống DOM, trình duyệt vẽ,
+    <strong>người dùng nhìn thấy nó</strong>. Xong xuôi rồi effect mới chạy, gọi <code>setNote</code>, kéo theo
+    một lần render thứ hai. Lần này mới đúng.</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 180" role="img" aria-label="So sanh trinh tu: reset bang useEffect ve mot khung hinh sai roi moi sua, con doi key thi dung ngay tu khung hinh dau">
+        <text x="0" y="12" font-size="10.5" font-family="monospace" fill="var(--bad)" letter-spacing="1">reset bằng useEffect</text>
+
+        <rect x="0" y="24" width="140" height="36" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="10" y="40" font-size="9.5" font-family="monospace" fill="currentColor">render #1</text>
+        <text x="10" y="53" font-size="9.5" font-family="monospace" fill="currentColor">state = đơn CŨ</text>
+
+        <line x1="140" y1="42" x2="147" y2="42" stroke="currentColor" stroke-width="1.2"/>
+        <polygon points="147,39 152,42 147,45" fill="currentColor"/>
+
+        <rect x="152" y="24" width="140" height="36" rx="4" fill="none" stroke="var(--bad)" stroke-width="1.6"/>
+        <text x="162" y="40" font-size="9.5" font-family="monospace" fill="var(--bad)">trình duyệt vẽ</text>
+        <text x="162" y="53" font-size="9.5" font-family="monospace" fill="var(--bad)">thấy đơn CŨ</text>
+        <text x="152" y="74" font-size="9.5" font-family="monospace" fill="var(--bad)">một khung hình sai</text>
+
+        <line x1="292" y1="42" x2="299" y2="42" stroke="currentColor" stroke-width="1.2"/>
+        <polygon points="299,39 304,42 299,45" fill="currentColor"/>
+
+        <rect x="304" y="24" width="140" height="36" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="314" y="40" font-size="9.5" font-family="monospace" fill="currentColor">effect chạy</text>
+        <text x="314" y="53" font-size="9.5" font-family="monospace" fill="currentColor">setNote(mới)</text>
+
+        <line x1="444" y1="42" x2="451" y2="42" stroke="currentColor" stroke-width="1.2"/>
+        <polygon points="451,39 456,42 451,45" fill="currentColor"/>
+
+        <rect x="456" y="24" width="140" height="36" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="466" y="40" font-size="9.5" font-family="monospace" fill="currentColor">render #2 → vẽ</text>
+        <text x="466" y="53" font-size="9.5" font-family="monospace" fill="currentColor">giờ mới đúng</text>
+
+        <line x1="0" y1="94" x2="620" y2="94" stroke="currentColor" stroke-width="1" opacity=".2"/>
+
+        <text x="0" y="118" font-size="10.5" font-family="monospace" fill="var(--ok)" letter-spacing="1">key = order.id</text>
+
+        <rect x="0" y="130" width="270" height="36" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="10" y="146" font-size="9.5" font-family="monospace" fill="currentColor">huỷ form cũ, dựng form mới</text>
+        <text x="10" y="159" font-size="9.5" font-family="monospace" fill="currentColor">useState đọc lại order.note</text>
+
+        <line x1="270" y1="148" x2="292" y2="148" stroke="currentColor" stroke-width="1.2"/>
+        <polygon points="292,145 298,148 292,151" fill="currentColor"/>
+
+        <rect x="300" y="130" width="270" height="36" rx="4" fill="none" stroke="var(--ok)" stroke-width="1.6"/>
+        <text x="310" y="146" font-size="9.5" font-family="monospace" fill="var(--ok)">trình duyệt vẽ</text>
+        <text x="310" y="159" font-size="9.5" font-family="monospace" fill="var(--ok)">đúng ngay khung hình đầu</text>
+      </svg>
+      <figcaption>Effect chạy <strong>sau</strong> lúc vẽ, nên luôn tồn tại một khung hình mang dữ liệu cũ. Đổi key thì không có khung hình sai nào để mà sửa.</figcaption>
+    </figure>
+
+    <h4><strong>e</strong> sai — và đây là hiểu nhầm phổ biến nhất về <code>useState</code></h4>
+    <p>Đối số của <code>useState(order.note)</code> chỉ được đọc <strong>đúng một lần</strong>: ở lần render đầu tiên
+    của instance đó. Từ lần thứ hai trở đi React <em>bỏ qua hoàn toàn</em> — nó đã có ô nhớ riêng rồi, đối số bạn
+    truyền vào chỉ là giá trị khởi tạo, không phải một mối ràng buộc.</p>
+    <p>Chính vì thế bài toán này mới tồn tại. Nếu <code>useState</code> đọc lại prop ở mỗi lần render thì chẳng ai
+    phải viết effect reset làm gì.</p>
+    <div class="flag"><p>Và đó cũng là lý do <code>key</code> giải được: đổi key → instance mới → có một
+    <strong>"lần render đầu tiên" mới</strong> → <code>useState</code> mới chịu đọc lại <code>order.note</code>.
+    Key không "reset state" — nó tạo ra một component khác, mà component mới thì đương nhiên chưa có state nào.</p></div>
+
+    <h4><strong>d</strong> sai — <code>key</code> không phải chuyện riêng của <code>.map()</code></h4>
+    <p><code>key</code> là thuộc tính React đọc ở <strong>bất kỳ element nào</strong>. Chỗ nào React phải quyết định
+    "giữ instance cũ hay dựng cái mới" thì chỗ đó key có tác dụng — kể cả một component đứng một mình.</p>
+    <p><code>.map()</code> chỉ là nơi bạn <em>buộc</em> phải nghĩ đến key, vì React cảnh báo nếu thiếu. Còn ở đây
+    không ai cảnh báo cả — nên hầu hết mọi người không nhớ ra là mình có sẵn công cụ này.</p>
+
+    <h4>Cái giá phải trả — <strong>f</strong> đúng</h4>
+    <p>Đổi key là unmount thật, không phải một cú reset nhẹ nhàng. Mọi state bên trong mất sạch, mọi
+    <code>useEffect</code> chạy cleanup rồi setup lại từ đầu, DOM node bị dựng mới nên <strong>tiêu điểm bàn phím
+    cũng mất</strong>.</p>
+    <p>Nếu trong form có một effect nặng — mở socket, tải dữ liệu phụ, đăng ký listener — thì nó cũng bị đập đi
+    dựng lại theo, dù việc đổi đơn chẳng liên quan gì tới nó.</p>
+    <p>Cách xử lý là <strong>đặt key đúng tầng</strong>: bọc riêng phần cần quên, để phần cần giữ ở ngoài.</p>
+    <pre><code>&lt;OrderPanel order={order}&gt;
+  &lt;LiveStatus orderId={order.id} /&gt;
+  &lt;EditFields key={order.id} order={order} /&gt;
+&lt;/OrderPanel&gt;</code></pre>
+    <p>Chỉ <code>EditFields</code> quên; <code>LiveStatus</code> giữ nguyên instance và tự lo phần của nó.</p>
+
+    <h4>Ba câu hỏi để chọn cách</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th>Hỏi</th><th>Nếu đúng</th></tr>
+      <tr><td>State này có nên <strong>sống sót</strong> khi đổi bản ghi không?</td><td>Không → nghĩ tới key trước tiên</td></tr>
+      <tr><td>Có state nào phải <strong>giữ lại</strong> không?</td><td>Có → tách component, đặt key ở tầng con</td></tr>
+      <tr><td>Remount có quá đắt (socket, tải lại, mất tiêu điểm)?</td><td>Có → chỉnh state <em>trong lúc render</em>, xem câu hỏi phụ</td></tr>
+    </table></div>
+
+    <h4>Câu chốt khi phỏng vấn</h4>
+    <div class="script">
+      <p>"Cần state quên đi khi đổi bản ghi thì tôi đổi <code>key</code>, không viết effect reset.
+      Effect chạy sau lúc vẽ nên luôn có một khung hình mang dữ liệu cũ, lại phải nhớ liệt kê từng ô —
+      thêm một state là thêm một chỗ để quên.</p>
+      <p>Đổi key thì React dựng instance mới, <code>useState</code> đọc lại prop ngay từ lần render đầu, đúng
+      từ khung hình đầu tiên và không có gì phải liệt kê. Đổi lại là remount thật: effect chạy lại, mất tiêu điểm —
+      nên tôi đặt key ở đúng tầng cần quên chứ không bọc cả màn hình."</p>
+    </div>
+  `,
+  followups: [
+    { q: 'Có cách nào bỏ effect mà <strong>không</strong> phải remount không?',
+      a: '<p>Có — React gọi là <em>adjusting state during render</em>. Bạn tự nhớ giá trị trước đó bằng state, so ngay trong thân hàm, và <code>setState</code> tại chỗ:</p><pre><code>const [note, setNote] = useState(order.note);\nconst [prevId, setPrevId] = useState(order.id);\n\nif (order.id !== prevId) {\n  setPrevId(order.id);\n  setNote(order.note);\n}</code></pre><p>Trông như phạm luật, nhưng đây là pattern chính thức. React thấy <code>setState</code> ngay trong lúc render thì <strong>chạy lại hàm lập tức, trước khi vẽ</strong> — không có khung hình sai, không cần effect.</p><p>Vẫn hai lượt render, nhưng người dùng không thấy lượt đầu. Đắt hơn về mặt đọc hiểu, nên chỉ dùng khi remount thật sự quá đắt. Mặc định vẫn là key.</p>' },
+    { q: 'Đổi <code>useEffect</code> thành <code>useLayoutEffect</code> có hết nháy không?',
+      a: '<p>Hết nháy — <code>useLayoutEffect</code> chạy <strong>trước</strong> lúc vẽ, nên khung hình sai không bao giờ lên màn hình.</p><p>Nhưng nó chỉ chữa được một trong ba vấn đề. Vẫn hai lượt render, vẫn phải liệt kê từng ô để reset, và giờ thêm một cái giá mới: nó <strong>chặn hiển thị</strong>. Đó là chữa triệu chứng kỹ hơn, không phải chữa nguyên nhân.</p>' },
+    { q: 'Đổi key có làm mất tiêu điểm bàn phím không?',
+      a: '<p>Có. DOM node cũ bị gỡ khỏi cây, node mới là node khác hoàn toàn — trình duyệt không có cách nào giữ tiêu điểm giùm bạn.</p><p>Với form chọn từ danh sách thì thường không sao, vì người dùng vừa bấm chuột sang bản ghi khác. Nhưng nếu key đổi vì một lý do <em>khác</em> trong lúc người dùng đang gõ dở, đó là bug — và nó nhắc lại đúng chuyện <code>Math.random()</code> ở câu về React key.</p>' },
+    { q: 'Vậy có bao giờ effect là <strong>đúng</strong> chỗ để đồng bộ state với prop không?',
+      a: '<p>Rất hiếm. Nguyên tắc: <code>useEffect</code> để <strong>đồng bộ với thứ ngoài React</strong> — mạng, DOM thật, timer, socket. Còn "prop đổi thì state phải đổi" là chuyện <em>trong</em> React, nên gần như luôn có cách không cần effect.</p><p>Thứ tự nên thử: (1) tính thẳng ra lúc render, khỏi cần state; (2) đổi key; (3) chỉnh state trong lúc render. Hết ba cách đó mới tới effect.</p>' },
+  ],
+},
+
 /* ---------------------------------------------------------- BE */
 {
   id: 'be-01',
