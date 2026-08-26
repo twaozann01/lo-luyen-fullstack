@@ -2780,6 +2780,277 @@ const redisAdapter = new RedisIoAdapter(...);   // fan-out đa instance</code></
       a: '<p>Có vài lựa chọn: adapter dùng <strong>Postgres LISTEN/NOTIFY</strong> (đỡ thêm một hạ tầng nếu đã có Postgres), <strong>NATS</strong> hay <strong>Kafka</strong> cho quy mô lớn, hoặc dịch vụ ngoài như Pusher/Ably để khỏi tự vận hành.</p><p>Với quy mô của dự án này thì Redis là lựa chọn cân bằng nhất — nhẹ, phổ biến, và bạn <strong>đã có sẵn Redis</strong> cho cache và BullMQ rồi.</p>' },
   ],
 },
+{
+  id: 'be-06',
+  section: 'be',
+  topic: 'Transaction',
+  level: 'khó',
+  multi: true,
+  q: 'Thợ tự nhận đơn. Hai thợ bấm <strong>Nhận đơn</strong> trên cùng một đơn, cách nhau vài mili-giây. Database là <strong>PostgreSQL, mức cô lập mặc định</strong> (Read Committed). Nhận định nào <strong>đúng</strong>?',
+  code: `async claim(id: string, actor: OrderActor) {
+  await this.prisma.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
+      where: { id },
+      select: { status: true, customerId: true },
+    });
+    if (!order) throw notFound();
+    assertTransition(order.status, OrderStatus.ASSIGNED);   // không PENDING → ném 409
+    // ... kiểm không phải đơn của chính mình, kiểm thợ đã VERIFIED ...
+
+    await this.applyTransition(tx, id, order.status, OrderStatus.ASSIGNED, actor.userId, {
+      repairmanId: actor.userId,
+    });
+  });
+}
+
+private async applyTransition(tx, id, from, to, changedById, data = {}) {
+  const res = await tx.order.updateMany({
+    where: { id, status: from },        // ← điều kiện nằm TRONG câu UPDATE
+    data:  { status: to, ...data },
+  });
+  if (res.count === 0)
+    throw new ConflictException({ code: 'INVALID_TRANSITION', ... });
+
+  await tx.orderStatusHistory.create({ data: { orderId: id, fromStatus: from, toStatus: to, ... } });
+}`,
+  options: [
+    { id: 'a', text: 'Bọc trong <code>$transaction</code> là đủ để chặn hai thợ cùng nhận — transaction đảm bảo hai request không chen vào nhau' },
+    { id: 'b', text: 'Ở Read Committed, hai transaction <strong>đều đọc được</strong> <code>status = PENDING</code> và <strong>đều vượt qua</strong> <code>assertTransition</code> — cái check bằng JS đó một mình không chặn được gì' },
+    { id: 'c', text: 'Thứ thật sự cứu tình huống này là <code>updateMany({ where: { id, status: from } })</code> cộng với việc kiểm <code>res.count === 0</code>' },
+    { id: 'd', text: 'Một cách khác là <code>SELECT ... FOR UPDATE</code> ngay đầu transaction: bên đến sau bị chặn lại, chờ bên kia commit rồi mới đọc được giá trị mới' },
+    { id: 'e', text: 'Đã có <code>updateMany</code> có điều kiện rồi thì <code>findUnique</code> ở đầu là thừa — xoá đi cho gọn' },
+    { id: 'f', text: 'Chuyển sang mức <code>Serializable</code> cũng giải được, nhưng đổi lại phải viết vòng lặp thử lại vì Postgres sẽ ném lỗi serialization' },
+  ],
+  correct: ['b', 'c', 'd', 'f'],
+  why: `
+    <div class="script">
+      <p>Transaction là <strong>nút hoàn tác</strong>, không phải <strong>ổ khoá cửa</strong>.</p>
+      <p>Nó đảm bảo <em>nguyên tử</em> — làm hết hoặc không làm gì. Nó <strong>không</strong> đảm bảo
+      <em>loại trừ lẫn nhau</em> — hai người vẫn cùng chạy song song được.</p>
+    </div>
+
+    <h4>Tấm vé cuối cùng</h4>
+    <p>Bạn vào trang bán vé tàu Tết, màn hình ghi <strong>"còn 1 vé"</strong>, bạn bấm Đặt. Cùng lúc đó
+    một người khác cũng thấy <strong>"còn 1 vé"</strong>, cũng bấm Đặt.</p>
+    <p>Cả hai đều đã kiểm tra trước khi hành động. Vấn đề không nằm ở chỗ ai lười kiểm — mà ở chỗ
+    <strong>giữa lúc nhìn và lúc bấm có một khoảng trống</strong>, và thế giới kịp đổi trong khoảng trống đó.
+    Tên gọi của lỗi này là <strong>check-then-act</strong>, và nó là họ hàng gần của
+    <em>race condition</em> mà bạn đã gặp ở phía FE.</p>
+
+    <h4>Vì sao <code>$transaction</code> không cứu được — <strong>a</strong> sai</h4>
+    <p>Nghe chữ "transaction" ai cũng tưởng nghĩa là <em>"trong lúc tôi làm thì không ai được chen vào"</em>.
+    Không phải. Nó hứa hai chuyện khác:</p>
+    <ul>
+      <li><strong>Làm hết hoặc không làm gì.</strong> Nếu đổi status xong mà dòng ghi
+      <code>orderStatusHistory</code> lỗi, cả hai cùng bị huỷ — không bao giờ có đơn đã đổi trạng thái
+      mà lịch sử thì trống.</li>
+      <li><strong>Người ngoài không thấy nửa vời.</strong> Ai nhìn vào giữa chừng cũng chỉ thấy trạng thái
+      <em>trước khi</em> bạn bắt đầu, cho tới lúc bạn commit.</li>
+    </ul>
+    <p>Cái nó tuyệt nhiên không hứa: chặn người khác cùng làm việc đó song song.</p>
+
+    <h4>Hai người, hai tấm ảnh — <strong>b</strong> đúng</h4>
+    <p>Postgres mặc định chạy ở <strong>Read Committed</strong>. Ở mức này, mỗi câu <code>SELECT</code>
+    chụp một <strong>tấm ảnh</strong> của database tại đúng thời điểm câu lệnh đó bắt đầu, rồi đọc trên
+    tấm ảnh ấy.</p>
+    <div class="flag"><p>Chỗ này nối thẳng về bài <strong>server state</strong>: hồi đó nói <em>dữ liệu API
+    trên FE chỉ là ảnh chụp</em>. Ở đây đúng y vậy, chỉ lùi thêm một tầng — <strong>ngay cả bên trong
+    database, cái bạn đọc ra cũng là ảnh chụp</strong>. Chụp xong là nó bắt đầu cũ đi.</p></div>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 250" role="img" aria-label="Hai tho chay song song: ca hai cung doc PENDING tu hai snapshot, ca hai cung qua duoc check bang JS, den luc UPDATE thi tho B moi bi chan">
+        <defs>
+          <marker id="ar15b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--bad)"/></marker>
+        </defs>
+
+        <text x="0" y="12" font-size="10.5" font-family="monospace" fill="currentColor" letter-spacing="1">thợ A</text>
+        <text x="318" y="12" font-size="10.5" font-family="monospace" fill="currentColor" letter-spacing="1">thợ B</text>
+        <line x1="308" y1="0" x2="308" y2="250" stroke="currentColor" stroke-width="1" opacity=".2"/>
+
+        <rect x="0" y="22" width="240" height="20" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="10" y="36" font-size="9.5" font-family="monospace" fill="currentColor">BEGIN</text>
+
+        <rect x="0" y="48" width="240" height="34" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="10" y="62" font-size="9.5" font-family="monospace" fill="currentColor">findUnique → chụp ảnh</text>
+        <text x="10" y="75" font-size="9.5" font-family="monospace" fill="var(--accent)">thấy status = PENDING</text>
+
+        <rect x="318" y="48" width="240" height="20" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="328" y="62" font-size="9.5" font-family="monospace" fill="currentColor">BEGIN</text>
+
+        <rect x="0" y="88" width="240" height="20" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="10" y="102" font-size="9.5" font-family="monospace" fill="var(--accent)">assertTransition ✓ qua</text>
+
+        <rect x="318" y="74" width="240" height="34" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="328" y="88" font-size="9.5" font-family="monospace" fill="currentColor">findUnique → chụp ảnh</text>
+        <text x="328" y="101" font-size="9.5" font-family="monospace" fill="var(--accent)">CŨNG thấy PENDING</text>
+
+        <rect x="0" y="114" width="240" height="34" rx="4" fill="none" stroke="var(--ok)" stroke-width="1.6"/>
+        <text x="10" y="128" font-size="9.5" font-family="monospace" fill="var(--ok)">updateMany → 1 dòng</text>
+        <text x="10" y="141" font-size="9.5" font-family="monospace" fill="var(--ok)">status = ASSIGNED</text>
+
+        <rect x="318" y="114" width="240" height="20" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="328" y="128" font-size="9.5" font-family="monospace" fill="var(--accent)">assertTransition ✓ CŨNG qua</text>
+
+        <rect x="0" y="154" width="240" height="20" rx="4" fill="none" stroke="var(--ok)" stroke-width="1.6"/>
+        <text x="10" y="168" font-size="9.5" font-family="monospace" fill="var(--ok)">COMMIT</text>
+
+        <rect x="318" y="140" width="240" height="34" rx="4" fill="none" stroke="var(--bad)" stroke-width="1.6"/>
+        <text x="328" y="154" font-size="9.5" font-family="monospace" fill="var(--bad)">updateMany → BỊ CHẶN</text>
+        <text x="328" y="167" font-size="9.5" font-family="monospace" fill="var(--bad)">chờ A commit…</text>
+
+        <line x1="240" y1="164" x2="312" y2="164" stroke="var(--bad)" stroke-width="1.4" marker-end="url(#ar15b)"/>
+
+        <rect x="318" y="180" width="240" height="46" rx="4" fill="none" stroke="var(--bad)" stroke-width="1.6"/>
+        <text x="328" y="194" font-size="9.5" font-family="monospace" fill="var(--bad)">Postgres kiểm LẠI where</text>
+        <text x="328" y="207" font-size="9.5" font-family="monospace" fill="var(--bad)">status giờ = ASSIGNED</text>
+        <text x="328" y="220" font-size="9.5" font-family="monospace" fill="var(--bad)">→ count = 0 → ném 409</text>
+
+        <text x="0" y="200" font-size="9.5" font-family="monospace" fill="currentColor" opacity=".75">cái if bằng JS không chặn</text>
+        <text x="0" y="214" font-size="9.5" font-family="monospace" fill="currentColor" opacity=".75">được ai — cả hai đều qua.</text>
+        <text x="0" y="232" font-size="9.5" font-family="monospace" fill="currentColor" opacity=".75">Chỗ chặn nằm ở câu UPDATE.</text>
+      </svg>
+      <figcaption>Hai snapshot, cả hai đều ghi <code>PENDING</code>, cả hai câu <code>if</code> đều cho qua. Không có transaction nào chặn ai — chỗ chặn nằm mãi ở câu <code>UPDATE</code>.</figcaption>
+    </figure>
+
+    <h4>Thứ thật sự cứu — <strong>c</strong> đúng</h4>
+    <p>Điều kiện <code>status = PENDING</code> được nhét <strong>vào bên trong chính câu lệnh ghi</strong>.
+    Kiểm tra và hành động không còn là hai bước tách rời — chúng gộp làm một, và database thực thi nguyên khối.
+    Khoảng trống check-then-act biến mất.</p>
+    <p>Khi hai câu <code>UPDATE</code> cùng nhắm vào <strong>một dòng</strong>, Postgres bắt buộc phải xếp hàng:
+    nó khoá dòng đó, ai đến trước ghi trước. Câu UPDATE của B bị chặn đứng, ngồi chờ tới khi A commit.</p>
+    <p>Và đây là mấu chốt ít người biết: ở Read Committed, sau khi B được đánh thức, Postgres
+    <strong>kiểm tra lại mệnh đề <code>WHERE</code> một lần nữa</strong> — lần này trên phiên bản mới của dòng,
+    tức phiên bản A vừa ghi. Lúc này <code>status</code> đã là <code>ASSIGNED</code>, điều kiện không còn khớp,
+    Postgres bỏ qua dòng đó, và câu lệnh của B sửa được <strong>đúng 0 dòng</strong>.</p>
+    <div class="flag"><p><strong>Bẫy chí tử:</strong> <code>updateMany</code> sửa 0 dòng thì <strong>không ném lỗi
+    gì cả</strong> — nó lặng lẽ trả về <code>{ count: 0 }</code>. Không kiểm <code>res.count === 0</code> thì
+    thợ B nhận được <strong>200 OK</strong>, giao diện hiện "Nhận đơn thành công", trong khi database không đổi gì.
+    Hai thợ cùng tưởng mình có đơn — mà <strong>log thì sạch trơn</strong>.</p></div>
+
+    <h4>Ba cách chặn, và cách chọn</h4>
+    <p><code>updateMany</code> có điều kiện là <strong>khoá lạc quan</strong>: cho cả hai cùng chạy, ai thua thì
+    đến lúc ghi mới biết. Còn <code>SELECT ... FOR UPDATE</code> (<strong>d</strong>) là <strong>khoá bi quan</strong>:
+    khoá ngay từ lúc đọc, B đứng chờ ngay tại dòng <code>SELECT</code>.</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 210" role="img" aria-label="So sanh khoa lac quan va khoa bi quan: lac quan cho ca hai chay roi bao loi luc ghi, bi quan bat ben den sau xep hang tu luc doc">
+        <text x="0" y="12" font-size="10.5" font-family="monospace" fill="var(--ok)" letter-spacing="1">LẠC QUAN — updateMany có điều kiện</text>
+
+        <text x="0" y="34" font-size="9.5" font-family="monospace" fill="currentColor">A</text>
+        <rect x="22" y="22" width="110" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="30" y="35" font-size="9" font-family="monospace" fill="currentColor">đọc — không chờ</text>
+        <rect x="140" y="22" width="110" height="18" rx="4" fill="none" stroke="var(--ok)" stroke-width="1.5"/>
+        <text x="148" y="35" font-size="9" font-family="monospace" fill="var(--ok)">ghi ✓ thắng</text>
+
+        <text x="0" y="60" font-size="9.5" font-family="monospace" fill="currentColor">B</text>
+        <rect x="22" y="48" width="110" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="30" y="61" font-size="9" font-family="monospace" fill="currentColor">đọc — không chờ</text>
+        <rect x="140" y="48" width="110" height="18" rx="4" fill="none" stroke="var(--bad)" stroke-width="1.5"/>
+        <text x="148" y="61" font-size="9" font-family="monospace" fill="var(--bad)">ghi ✗ count = 0</text>
+        <text x="258" y="61" font-size="9" font-family="monospace" fill="var(--bad)">biết mình thua ở ĐÂY</text>
+
+        <text x="22" y="84" font-size="9" font-family="monospace" fill="currentColor" opacity=".75">Không ai phải chờ ai trong 99% lượt không tranh chấp.</text>
+
+        <line x1="0" y1="100" x2="620" y2="100" stroke="currentColor" stroke-width="1" opacity=".2"/>
+
+        <text x="0" y="124" font-size="10.5" font-family="monospace" fill="var(--accent)" letter-spacing="1">BI QUAN — SELECT ... FOR UPDATE</text>
+
+        <text x="0" y="146" font-size="9.5" font-family="monospace" fill="currentColor">A</text>
+        <rect x="22" y="134" width="110" height="18" rx="4" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="30" y="147" font-size="9" font-family="monospace" fill="var(--accent)">đọc + GIỮ KHOÁ</text>
+        <rect x="140" y="134" width="110" height="18" rx="4" fill="none" stroke="var(--ok)" stroke-width="1.5"/>
+        <text x="148" y="147" font-size="9" font-family="monospace" fill="var(--ok)">ghi ✓ rồi commit</text>
+
+        <text x="0" y="172" font-size="9.5" font-family="monospace" fill="currentColor">B</text>
+        <rect x="22" y="160" width="228" height="18" rx="4" fill="none" stroke="var(--bad)" stroke-width="1.5" stroke-dasharray="4 3"/>
+        <text x="30" y="173" font-size="9" font-family="monospace" fill="var(--bad)">đứng chờ ngay tại dòng đọc…</text>
+        <rect x="258" y="160" width="150" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="266" y="173" font-size="9" font-family="monospace" fill="currentColor">đọc ra ASSIGNED</text>
+        <text x="416" y="173" font-size="9" font-family="monospace" fill="var(--bad)">biết mình thua ở ĐÂY</text>
+
+        <text x="22" y="196" font-size="9" font-family="monospace" fill="currentColor" opacity=".75">Cái if bằng JS LẠI đúng — vì dữ liệu nó phán xét đã tươi.</text>
+      </svg>
+      <figcaption>Khoá lạc quan: cứ chạy đi, thua thì báo <strong>lúc ghi</strong>. Khoá bi quan: xếp hàng trước, thua thì biết <strong>lúc đọc</strong>.</figcaption>
+    </figure>
+
+    <p>Điểm đáng chú ý ở cách bi quan: <code>assertTransition</code> bằng JS <strong>lại trở nên đúng</strong> —
+    không phải vì bản thân nó khá hơn, mà vì dữ liệu nó đang phán xét đã là dữ liệu tươi.</p>
+
+    <p>Cách thứ ba là nâng mức cô lập lên <code>Serializable</code> (<strong>f</strong>). Postgres tự theo dõi
+    các transaction đọc gì ghi gì, phát hiện hai cái này không xếp được thành một thứ tự hợp lệ, và
+    <strong>huỷ một cái</strong> bằng lỗi mã <code>40001</code>. Đúng về kết quả, nhưng cái giá là bạn phải tự
+    viết vòng lặp thử lại — vì <code>40001</code> không phải "dữ liệu sai", nó là <em>"bạn xui, chạy lại đi"</em>.
+    Không có vòng lặp đó thì người dùng ăn lỗi 500 vô cớ.</p>
+
+    <div class="tbl-wrap"><table>
+      <tr><th>Cách</th><th>Bên thua biết lúc nào</th><th>Hợp khi</th></tr>
+      <tr><td><code>UPDATE ... WHERE status = ?</code></td><td>lúc ghi — <code>count = 0</code></td><td><strong>Tranh chấp hiếm.</strong> Không bắt ai chờ ai</td></tr>
+      <tr><td><code>SELECT ... FOR UPDATE</code></td><td>lúc đọc — đã thấy giá trị mới</td><td>Tranh chấp dày, hoặc phải đọc nhiều dòng rồi mới quyết</td></tr>
+      <tr><td><code>Serializable</code> + retry</td><td>lúc commit — lỗi <code>40001</code></td><td>Luật phức tạp, trải trên nhiều bảng, khó nhét hết vào một <code>WHERE</code></td></tr>
+    </table></div>
+    <p>Với đơn hàng thì cả ngày mới có một hai đơn bị hai thợ bấm cùng lúc — tranh chấp rất hiếm — nên kiểu lạc quan
+    hợp hơn. Đây cũng là câu trả lời ăn điểm khi phỏng vấn hỏi <em>"chọn cái nào"</em>: <strong>chọn theo mức độ
+    tranh chấp</strong>, không phải cái nào nghe "an toàn hơn".</p>
+
+    <h4>Vì sao <code>findUnique</code> không thừa — <strong>e</strong> sai</h4>
+    <p>Nghe rất hợp lý: điều kiện đã nằm trong <code>updateMany</code> rồi, đọc trước làm gì cho tốn một vòng?
+    Nhưng bỏ nó đi thì mất ba thứ:</p>
+    <ul>
+      <li><strong>Phân biệt 404 với 409.</strong> <code>count === 0</code> có hai nguyên nhân khác hẳn nhau:
+      đơn không tồn tại, hoặc đơn tồn tại nhưng đã bị người khác nhận. Nhìn con số 0 thì không tài nào biết là cái nào.</li>
+      <li><strong>Các luật khác cần chính dữ liệu đó.</strong> <code>order.customerId === actor.userId</code> —
+      chặn người ta tự nhận đơn của mình. Muốn kiểm thì phải có <code>customerId</code> trong tay.</li>
+      <li><strong>Thông báo lỗi tử tế.</strong> <code>assertTransition</code> biết đơn đang ở trạng thái nào nên
+      nói được "đơn đã huỷ" hay "đơn đã hoàn thành". <code>count === 0</code> chỉ nói được "không đổi được", hết.</li>
+    </ul>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 150" role="img" aria-label="Hai lop phong thu: lop tren lo trai nghiem bao loi dung, lop duoi lo dung dan chan that">
+        <rect x="0" y="20" width="290" height="72" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="14" y="38" font-size="10" font-family="monospace" fill="var(--accent)" letter-spacing="1">LỚP TRÊN — trải nghiệm</text>
+        <text x="14" y="55" font-size="9.5" font-family="monospace" fill="currentColor">findUnique + assertTransition</text>
+        <text x="14" y="70" font-size="9" font-family="monospace" fill="currentColor" opacity=".8">404 hay 409 · lỗi nói rõ lý do</text>
+        <text x="14" y="84" font-size="9" font-family="monospace" fill="currentColor" opacity=".8">lo 99,99% lượt bình thường</text>
+
+        <rect x="330" y="20" width="290" height="72" rx="6" fill="none" stroke="var(--ok)" stroke-width="1.6"/>
+        <text x="344" y="38" font-size="10" font-family="monospace" fill="var(--ok)" letter-spacing="1">LỚP DƯỚI — đúng đắn</text>
+        <text x="344" y="55" font-size="9.5" font-family="monospace" fill="var(--ok)">updateMany + kiểm count</text>
+        <text x="344" y="70" font-size="9" font-family="monospace" fill="var(--ok)" opacity=".85">chặn THẬT, không ai lách được</text>
+        <text x="344" y="84" font-size="9" font-family="monospace" fill="var(--ok)" opacity=".85">lo 0,01% lượt chen nhau</text>
+
+        <text x="0" y="118" font-size="9.5" font-family="monospace" fill="var(--bad)">bỏ lớp trên → code vẫn ĐÚNG, chỉ là báo lỗi tệ đi</text>
+        <text x="0" y="136" font-size="9.5" font-family="monospace" fill="var(--bad)">bỏ lớp dưới → code có BUG — mà chỉ hiện ra khi đông người dùng</text>
+      </svg>
+      <figcaption>Hai lớp lo hai việc khác nhau, không lớp nào thay được lớp nào.</figcaption>
+    </figure>
+
+    <h4>Câu chốt khi phỏng vấn</h4>
+    <div class="script">
+      <p>"Bọc <code>$transaction</code> không chặn được double-claim, vì transaction đảm bảo <strong>nguyên tử</strong>,
+      không đảm bảo <strong>loại trừ lẫn nhau</strong>. Ở Read Committed, hai request đều đọc ra <code>PENDING</code>
+      từ hai snapshot khác nhau, nên cái <code>if</code> ở tầng ứng dụng cho qua cả hai — lỗi check-then-act kinh điển.</p>
+      <p>Thứ chặn thật là đưa điều kiện vào trong chính câu ghi: <code>UPDATE ... WHERE id = ? AND status = 'PENDING'</code>.
+      Hai UPDATE vào cùng một dòng thì phải xếp hàng, và Postgres kiểm lại <code>WHERE</code> sau khi bên kia commit,
+      nên bên thua sửa được 0 dòng. Bắt buộc phải kiểm số dòng ảnh hưởng, vì sửa 0 dòng thì không ném lỗi —
+      bỏ qua là hai thợ cùng nhận được 200 OK.</p>
+      <p>Còn hai cách khác: <code>SELECT ... FOR UPDATE</code> để khoá bi quan, và <code>Serializable</code> kèm vòng lặp
+      retry. Tranh chấp hiếm như nhận đơn thì tôi chọn kiểu lạc quan, vì nó không bắt ai chờ trong phần lớn trường hợp."</p>
+    </div>
+  `,
+  followups: [
+    { q: 'Vì sao Postgres phải kiểm lại <code>WHERE</code> sau khi bên kia commit? Nghe không hiển nhiên chút nào.',
+      a: '<p>Vì ở Read Committed, mỗi <strong>câu lệnh</strong> phải nhìn thấy mọi thứ đã commit tính đến lúc <em>câu lệnh đó</em> bắt đầu. Câu UPDATE của B khởi động lúc đơn còn PENDING, nhưng nó bị chặn lại giữa chừng — và trong lúc chờ, A commit.</p><p>Đến lượt B chạy tiếp, Postgres đứng trước hai lựa chọn: ghi đè lên phiên bản mới (mất luôn thay đổi của A — gọi là <em>lost update</em>), hay đọc lại xem điều kiện còn đúng không. Nó chọn cách thứ hai.</p><p>Hệ quả cần nhớ: hành vi này <strong>chỉ có ở Read Committed</strong>. Ở <code>Repeatable Read</code> và <code>Serializable</code>, Postgres không kiểm lại mà ném thẳng lỗi <code>40001</code> — nên ở hai mức đó bạn <em>bắt buộc</em> phải có vòng lặp retry.</p>' },
+    { q: 'Thay vì kiểm <code>status</code>, dùng cột <code>version</code> tăng dần có được không?',
+      a: '<p>Được, và đó chính là <strong>optimistic locking</strong> theo sách vở: <code>UPDATE ... WHERE id = ? AND version = 7</code>, mỗi lần ghi thì <code>version + 1</code>. Sửa 0 dòng nghĩa là có người ghi trước bạn.</p><p>Ưu điểm: bắt được <strong>mọi</strong> thay đổi song song, kể cả những thay đổi không đụng tới <code>status</code> — ví dụ hai admin cùng sửa giá.</p><p>Ở đây dự án dùng thẳng <code>status</code> vì nó <em>đã</em> là thứ quyết định luật chuyển trạng thái, khỏi thêm cột. Nhưng khi bài toán là "hai người cùng sửa một biểu mẫu" chứ không phải "hai người tranh một trạng thái", thì cột <code>version</code> hợp hơn.</p>' },
+    { q: '<code>FOR UPDATE</code> có nguy cơ gì không?',
+      a: '<p>Hai cái. <strong>Deadlock</strong>: hai transaction khoá hai dòng theo thứ tự ngược nhau rồi chờ nhau vĩnh viễn — Postgres phát hiện được và giết một bên, nhưng bạn vẫn phải xử lý lỗi đó. Cách phòng: luôn khoá các dòng theo <strong>cùng một thứ tự</strong>, chẳng hạn sắp theo id.</p><p><strong>Giữ khoá quá lâu</strong>: khoá sống tới hết transaction. Nếu trong transaction có gọi API ngoài hay gửi thông báo, mọi người khác đứng chờ theo. Nguyên tắc: transaction chỉ chứa việc của database, mọi thứ chậm và không chắc chắn đẩy ra ngoài — đúng như code này đang làm với <code>ensureChat</code> và <code>safeNotify</code>.</p>' },
+    { q: 'Vì sao <code>ensureChat</code> và <code>safeNotify</code> nằm <strong>ngoài</strong> transaction?',
+      a: '<p>Vì chúng đụng tới thứ mà transaction <strong>không hoàn tác được</strong>. Rollback thì database quay lại như cũ, nhưng cái push notification đã bắn đi rồi thì không rút về được nữa.</p><p>Nếu để bên trong: transaction phải chờ mạng, khoá dòng giữ lâu hơn, mà lỡ rollback thì thợ đã nhận thông báo "bạn được giao đơn" cho một đơn chẳng bao giờ được giao.</p><p>Luật chung: <strong>trong transaction chỉ có việc của database</strong>. Gọi API ngoài, gửi mail, bắn socket — làm sau khi commit. Chấp nhận rằng bước sau có thể lỗi (nên mới có tiền tố <code>safe</code>), còn hơn để nó kéo cả transaction xuống.</p>' },
+    { q: 'Làm sao viết test cho tình huống này? Khó tái hiện đúng lúc lắm.',
+      a: '<p>Đừng cố ăn may bằng cách bắn hai request rồi hy vọng chúng chen nhau. Hai cách chắc chắn hơn:</p><p><strong>Test tích hợp có kiểm soát:</strong> mở hai transaction thật, cho cả hai <code>SELECT</code>, rồi mới lần lượt <code>UPDATE</code> — bạn tự dựng ra đúng thứ tự chen nhau, không phụ thuộc may rủi.</p><p><strong>Test đơn vị cho phần hậu quả:</strong> giả lập <code>updateMany</code> trả về <code>{ count: 0 }</code> và khẳng định code ném <code>ConflictException</code>. Cái này không chứng minh được database hành xử ra sao, nhưng chặn được đúng lỗi hay xảy ra nhất: ai đó tương lai xoá dòng kiểm <code>count</code> đi.</p>' },
+  ],
+},
+
 ];
 
 /* ============================================================
