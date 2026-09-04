@@ -543,7 +543,7 @@
    NGÂN HÀNG CÂU HỎI — thêm câu = nối object vào BANK
    ============================================================ */
 
-const SECTIONS = { fe: 'Front-end', be: 'Back-end' };
+const SECTIONS = { fe: 'Front-end', be: 'Back-end', fs: 'Bảo mật web' };
 
 const BANK = [
 
@@ -3322,6 +3322,446 @@ WHERE id = $seatId AND status = 'HELD'
   ],
 },
 
+{
+  id: 'be-08',
+  section: 'be',
+  topic: 'Xác thực',
+  level: 'khó',
+  multi: true,
+  q: 'Đăng nhập trong dự án cấp <strong>hai</strong> token: access ngắn hạn, refresh dài hạn được lưu vào Redis theo key <code>rt:{userId}</code> và <strong>xoay vòng</strong> mỗi lần gọi <code>/refresh</code>. Nhận định nào <strong>đúng</strong>?',
+  code: `// auth.service.ts — rút gọn
+async refresh(userId: string, presentedToken: string) {
+  const stored = await this.redis.get(\`rt:\${userId}\`);
+  if (!stored || stored !== presentedToken) {
+    throw new UnauthorizedException({ code: 'INVALID_REFRESH_TOKEN' });
+  }
+  return this.issueTokens(user);          // cấp bộ mới
+}
+
+private async issueTokens(user: UserWithRole) {
+  const accessToken  = await this.jwt.signAsync({ sub: user.id, role: ... },
+                          { secret: accessSecret,  expiresIn: '15m' });
+  const refreshToken = await this.jwt.signAsync({ sub: user.id, type: 'refresh' },
+                          { secret: refreshSecret, expiresIn: '7d'  });
+
+  await this.redis.set(\`rt:\${user.id}\`, refreshToken, refreshTtlSeconds); // GHI ĐÈ
+  return { accessToken, refreshToken };
+}
+
+async logout(userId: string) { await this.redis.del(\`rt:\${userId}\`); }`,
+  options: [
+    { id: 'a', text: 'Access token <strong>tự chứa</strong> nên mỗi request chỉ cần kiểm chữ ký, không phải tra Redis hay database — nhưng cũng chính vì thế mà <strong>không thu hồi được</strong> giữa chừng, nên hạn của nó buộc phải ngắn' },
+    { id: 'b', text: 'Lưu refresh token vào Redis là <strong>phá vỡ tính stateless</strong> của JWT, nên thiết kế này sai về nguyên tắc — đã dùng JWT thì không được lưu gì ở server' },
+    { id: 'c', text: 'Vì key là <code>rt:{userId}</code> và chỉ chứa <strong>một</strong> token, đăng nhập trên máy thứ hai sẽ <strong>đá văng</strong> phiên đang mở ở máy thứ nhất' },
+    { id: 'd', text: 'Xoay vòng (rotation) khiến refresh token cũ <strong>vô hiệu ngay lập tức</strong> dù JWT của nó còn hạn nhiều ngày — vì cái quyết định không phải hạn trong token mà là giá trị đang nằm trong Redis' },
+    { id: 'e', text: 'Việc xoay vòng như trên đã đủ để hệ thống <strong>phát hiện</strong> refresh token bị đánh cắp và khoá phiên đó lại' },
+    { id: 'f', text: 'Để token ở <code>localStorage</code> thì XSS đọc được; chuyển sang cookie <code>httpOnly</code> thì chặn được XSS nhưng lại mở ra CSRF — <strong>không có lựa chọn nào miễn phí</strong>' },
+    { id: 'g', text: 'Ở phía FE, cứ để mỗi request gặp 401 thì <strong>tự gọi</strong> <code>/refresh</code> rồi thử lại là đủ, không cần gộp gì thêm' },
+  ],
+  correct: ['a', 'c', 'd', 'f'],
+  why: `
+    <div class="script">
+      <p><strong>JWT không phải cái khoá. Nó là tờ giấy đã ký.</strong></p>
+      <p>Cái khoá thì bạn đổi ổ là xong. Tờ giấy đã ký thì phát ra rồi <strong>không thu về được</strong> —
+      ai cầm nó cũng dùng được, cho tới đúng cái ngày ghi trên giấy. Toàn bộ thiết kế hai token sinh ra từ
+      một câu hỏi duy nhất: <em>làm sao sống chung với việc không thu hồi được?</em></p>
+    </div>
+
+    <h4>Vòng tay và thẻ lễ tân</h4>
+    <p>Hình dung một khu vui chơi. Bạn mua vé xong, họ đeo cho bạn <strong>một chiếc vòng tay</strong>. Từ đó
+    mỗi lần vào trò chơi, nhân viên chỉ <em>liếc</em> cái vòng — thấy đúng dấu chìm, đúng màu của hôm nay là cho
+    vào. Họ <strong>không gọi điện về văn phòng</strong> hỏi xem bạn còn quyền vào không. Nhanh khủng khiếp,
+    một giây một người.</p>
+    <p>Đổi lại: nếu văn phòng phát hiện bạn gian lận lúc 10 giờ, họ <strong>không có cách nào</strong> báo cho
+    hai chục nhân viên đứng rải rác biết. Chiếc vòng vẫn hoạt động. Cách duy nhất là <strong>làm vòng hết hạn
+    nhanh</strong> — đổi màu vòng mỗi 15 phút.</p>
+    <p>Vậy 15 phút một lần bạn phải làm gì? Ra <strong>quầy lễ tân</strong>, chìa <strong>tấm thẻ</strong> họ đưa
+    lúc mua vé. Quầy lễ tân có <strong>sổ</strong>. Họ tra sổ, thấy tên bạn chưa bị gạch thì đưa vòng mới. Và vì
+    có sổ nên họ <strong>gạch tên được</strong> — cái mà nhân viên đứng ở trò chơi không làm nổi.</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 200" role="img" aria-label="So sanh access token kiem bang chu ky khong tra so voi refresh token phai tra Redis nen thu hoi duoc">
+        <defs>
+          <marker id="ar17" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        </defs>
+
+        <text x="0" y="12" font-size="10.5" font-family="monospace" fill="var(--accent)" letter-spacing="1">ACCESS TOKEN — chiếc vòng tay · hạn 15 phút</text>
+
+        <rect x="0" y="22" width="140" height="32" rx="5" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="10" y="36" font-size="8.5" font-family="monospace" fill="currentColor">GET /orders</text>
+        <text x="10" y="48" font-size="8.5" font-family="monospace" fill="currentColor">Authorization: Bearer…</text>
+
+        <line x1="140" y1="38" x2="164" y2="38" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar17)"/>
+
+        <rect x="170" y="22" width="176" height="32" rx="5" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="180" y="36" font-size="8.5" font-family="monospace" fill="var(--accent)">kiểm CHỮ KÝ + hạn</text>
+        <text x="180" y="48" font-size="8.5" font-family="monospace" fill="var(--accent)">không chạm Redis, không chạm DB</text>
+
+        <line x1="346" y1="38" x2="370" y2="38" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar17)"/>
+
+        <rect x="376" y="22" width="120" height="32" rx="5" fill="none" stroke="var(--ok)" stroke-width="1.2"/>
+        <text x="386" y="42" font-size="9" font-family="monospace" fill="var(--ok)">cho qua — ~0.1ms</text>
+
+        <text x="510" y="34" font-size="8.5" font-family="monospace" fill="var(--bad)">thu hồi giữa chừng?</text>
+        <text x="510" y="47" font-size="9.5" font-family="monospace" fill="var(--bad)">KHÔNG THỂ</text>
+
+        <line x1="0" y1="76" x2="620" y2="76" stroke="currentColor" stroke-width="1" opacity=".2"/>
+
+        <text x="0" y="100" font-size="10.5" font-family="monospace" fill="var(--ok)" letter-spacing="1">REFRESH TOKEN — tấm thẻ ở quầy · hạn 7 ngày</text>
+
+        <rect x="0" y="110" width="140" height="32" rx="5" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="10" y="124" font-size="8.5" font-family="monospace" fill="currentColor">POST /auth/refresh</text>
+        <text x="10" y="136" font-size="8.5" font-family="monospace" fill="currentColor">15 phút MỘT LẦN</text>
+
+        <line x1="140" y1="126" x2="164" y2="126" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar17)"/>
+
+        <rect x="170" y="110" width="176" height="32" rx="5" fill="none" stroke="var(--ok)" stroke-width="1.5"/>
+        <text x="180" y="124" font-size="8.5" font-family="monospace" fill="var(--ok)">TRA SỔ: redis.get(rt:userId)</text>
+        <text x="180" y="136" font-size="8.5" font-family="monospace" fill="var(--ok)">so khớp đúng chuỗi đang lưu</text>
+
+        <line x1="346" y1="126" x2="370" y2="126" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar17)"/>
+
+        <rect x="376" y="110" width="120" height="32" rx="5" fill="none" stroke="var(--accent)" stroke-width="1.2"/>
+        <text x="386" y="124" font-size="8.5" font-family="monospace" fill="var(--accent)">cấp bộ MỚI</text>
+        <text x="386" y="136" font-size="8.5" font-family="monospace" fill="var(--accent)">+ ghi đè lên sổ</text>
+
+        <text x="510" y="122" font-size="8.5" font-family="monospace" fill="var(--ok)">thu hồi?</text>
+        <text x="510" y="135" font-size="9.5" font-family="monospace" fill="var(--ok)">XOÁ KEY</text>
+
+        <text x="0" y="170" font-size="9.5" font-family="monospace" fill="currentColor" opacity=".8">Nhanh mà không thu hồi được, đổi lấy thu hồi được mà phải tra sổ.</text>
+        <text x="0" y="188" font-size="9.5" font-family="monospace" fill="currentColor" opacity=".8">Chia hai token = trả cái giá "tra sổ" đúng 1 lần mỗi 15 phút, thay vì mỗi request.</text>
+      </svg>
+      <figcaption>Không phải chọn một trong hai. Chia làm hai token là cách <strong>lấy cả hai</strong> — và trả giá ở chỗ rẻ nhất.</figcaption>
+    </figure>
+
+    <h4>Vì sao <strong>b</strong> sai — "stateless" không phải lời thề</h4>
+    <p>Rất nhiều người học JWT xong nhớ đúng một chữ: <em>stateless</em>. Rồi thấy <code>redis.set</code> trong
+    code là kêu lên "vậy còn dùng JWT làm gì!".</p>
+    <p>Hãy đếm cho kỹ. Access token hạn 15 phút, refresh hạn 7 ngày. Một người dùng hoạt động liên tục 8 tiếng sẽ
+    bắn khoảng <strong>vài nghìn</strong> request, nhưng chỉ gọi <code>/refresh</code> đúng <strong>32 lần</strong>.
+    Thiết kế này không vứt bỏ tính stateless — nó <strong>dồn toàn bộ phần có state vào 32 lần đó</strong>, còn
+    vài nghìn lần kia vẫn hoàn toàn không tra sổ.</p>
+    <div class="flag"><p>Đây là dạng câu trả lời phân loại rất mạnh trong phỏng vấn. Người học vẹt nói
+    <em>"JWT thì phải stateless"</em>. Người đã làm thật nói <em>"tôi đánh đổi có ý thức: mua khả năng thu hồi
+    bằng một lần tra Redis mỗi 15 phút"</em>. Cùng một sự kiện, hai mức hiểu khác hẳn nhau.</p></div>
+
+    <h4>Một key, một token — <strong>c</strong> và <strong>d</strong> đúng</h4>
+    <p>Cả hai đáp án này đều đọc ra được từ đúng một dòng code, và đây là chỗ đáng dừng lại lâu nhất:</p>
+    <pre><code>await this.redis.set(\`rt:\${user.id}\`, refreshToken, ttl);</code></pre>
+    <p><strong>Ghi đè, không phải thêm vào.</strong> Key đặt theo <code>userId</code> nên mỗi người dùng chỉ có
+    đúng <strong>một ô</strong>. Hai hệ quả rơi ra ngay:</p>
+    <div class="tbl-wrap"><table>
+      <tr><th>Hệ quả</th><th>Vì sao</th><th>Là tính năng hay lỗi?</th></tr>
+      <tr><td><strong>d</strong> — refresh cũ chết ngay khi refresh mới ra đời</td><td>Lần sau chìa token cũ ra, <code>stored !== presentedToken</code> → 401</td><td><strong>Tính năng.</strong> Cửa sổ dùng được của một token bị đánh cắp co từ 7 ngày xuống còn vài phút</td></tr>
+      <tr><td><strong>c</strong> — đăng nhập máy thứ hai đá văng máy thứ nhất</td><td>Ô chỉ có một, đăng nhập lại là ghi đè</td><td><strong>Tuỳ.</strong> Ngân hàng thì đó là tính năng. Sàn thương mại điện tử thì đó là lỗi khó chịu</td></tr>
+    </table></div>
+    <p>Muốn cho phép nhiều thiết bị thì đổi <strong>hình dạng của key</strong>: <code>rt:{userId}:{deviceId}</code>,
+    mỗi phiên một ô riêng. Lúc đó "đăng xuất khỏi tất cả thiết bị" trở thành xoá theo tiền tố. Nhìn ra được rằng
+    <em>hành vi sản phẩm nằm ngay trong cách đặt tên key</em> là một điểm cộng lớn.</p>
+
+    <h4>Điểm yếu thật của code này — vì sao <strong>e</strong> sai</h4>
+    <p>Rotation làm co hẹp thiệt hại, đúng. Nhưng nó <strong>không</strong> phát hiện được gì cả. Theo dõi dòng
+    thời gian sau, và để ý nạn nhân <em>nhìn thấy gì</em>:</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 232" role="img" aria-label="Dong thoi gian danh cap refresh token: ke trom refresh truoc, nan nhan bi 401 va chi thay minh bi dang xuat">
+        <defs>
+          <marker id="ar17b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        </defs>
+
+        <text x="0" y="12" font-size="9.5" font-family="monospace" fill="currentColor" opacity=".75">Ô Redis rt:u1 — chỉ chứa được MỘT giá trị</text>
+
+        <line x1="0" y1="112" x2="608" y2="112" stroke="currentColor" stroke-width="1.2" opacity=".45" marker-end="url(#ar17b)"/>
+
+        <line x1="46" y1="106" x2="46" y2="118" stroke="currentColor" stroke-width="1.2"/>
+        <text x="46" y="132" font-size="9" font-family="monospace" fill="currentColor" text-anchor="middle">10:00</text>
+        <rect x="0" y="30" width="126" height="42" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="8" y="44" font-size="8.5" font-family="monospace" fill="currentColor">nạn nhân đăng nhập</text>
+        <text x="8" y="56" font-size="8.5" font-family="monospace" fill="var(--accent)">rt:u1 = T1</text>
+        <text x="8" y="68" font-size="8.5" font-family="monospace" fill="currentColor" opacity=".7">cả hai bên đều ổn</text>
+        <line x1="46" y1="72" x2="46" y2="104" stroke="currentColor" stroke-width="1" opacity=".4"/>
+
+        <line x1="186" y1="106" x2="186" y2="118" stroke="var(--bad)" stroke-width="1.2"/>
+        <text x="186" y="132" font-size="9" font-family="monospace" fill="var(--bad)" text-anchor="middle">10:05</text>
+        <rect x="136" y="30" width="128" height="42" rx="4" fill="none" stroke="var(--bad)" stroke-width="1.4"/>
+        <text x="144" y="44" font-size="8.5" font-family="monospace" fill="var(--bad)">XSS đọc localStorage</text>
+        <text x="144" y="56" font-size="8.5" font-family="monospace" fill="var(--bad)">kẻ trộm cầm được T1</text>
+        <text x="144" y="68" font-size="8.5" font-family="monospace" fill="currentColor" opacity=".7">server chưa biết gì</text>
+        <line x1="186" y1="72" x2="186" y2="104" stroke="var(--bad)" stroke-width="1" opacity=".5"/>
+
+        <line x1="330" y1="106" x2="330" y2="118" stroke="var(--bad)" stroke-width="1.2"/>
+        <text x="330" y="132" font-size="9" font-family="monospace" fill="var(--bad)" text-anchor="middle">10:06</text>
+        <rect x="274" y="30" width="140" height="42" rx="4" fill="none" stroke="var(--bad)" stroke-width="1.4"/>
+        <text x="282" y="44" font-size="8.5" font-family="monospace" fill="var(--bad)">kẻ trộm gọi /refresh</text>
+        <text x="282" y="56" font-size="8.5" font-family="monospace" fill="var(--bad)">T1 khớp sổ → HỢP LỆ</text>
+        <text x="282" y="68" font-size="8.5" font-family="monospace" fill="var(--accent)">rt:u1 = T2 (của kẻ trộm)</text>
+        <line x1="330" y1="72" x2="330" y2="104" stroke="var(--bad)" stroke-width="1" opacity=".5"/>
+
+        <line x1="500" y1="106" x2="500" y2="118" stroke="currentColor" stroke-width="1.2"/>
+        <text x="500" y="132" font-size="9" font-family="monospace" fill="currentColor" text-anchor="middle">10:20</text>
+        <rect x="430" y="152" width="190" height="52" rx="4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="438" y="166" font-size="8.5" font-family="monospace" fill="currentColor">nạn nhân gọi /refresh với T1</text>
+        <text x="438" y="178" font-size="8.5" font-family="monospace" fill="var(--bad)">sổ đang giữ T2 → 401</text>
+        <text x="438" y="192" font-size="8.5" font-family="monospace" fill="var(--bad)">màn hình hiện: "Phiên hết hạn"</text>
+        <line x1="500" y1="118" x2="500" y2="150" stroke="currentColor" stroke-width="1" opacity=".5"/>
+
+        <text x="0" y="172" font-size="9.5" font-family="monospace" fill="var(--bad)">Server ĐÃ nhìn thấy dấu hiệu:</text>
+        <text x="0" y="186" font-size="9.5" font-family="monospace" fill="var(--bad)">một token đã bị xoay vòng lại</text>
+        <text x="0" y="200" font-size="9.5" font-family="monospace" fill="var(--bad)">xuất hiện lần nữa.</text>
+
+        <text x="0" y="224" font-size="9.5" font-family="monospace" fill="currentColor" opacity=".85">Nhưng nó trả về đúng một câu 401 chung — không phân biệt nổi với ca hết hạn bình thường.</text>
+      </svg>
+      <figcaption>Tín hiệu <strong>có ở đó</strong> rồi. Cái thiếu là ai đó chịu đọc nó.</figcaption>
+    </figure>
+
+    <p>Đó chính là <strong>reuse detection</strong>: khi một refresh token <em>đã bị xoay vòng</em> lại được chìa
+    ra lần nữa, kết luận gần như chắc chắn là có hai bên đang cầm cùng một token. Phản ứng đúng không phải ném 401
+    rồi thôi, mà là <strong>huỷ cả họ token đó</strong>, buộc đăng nhập lại, và ghi log cảnh báo.</p>
+    <p>Muốn làm được thì phải nhớ thêm một chút: lưu <em>các token đã dùng rồi</em> của mỗi phiên (một
+    <code>familyId</code> chung), thấy token nào nằm trong danh sách đó quay lại là đạp phanh. Code hiện tại
+    <strong>không có</strong> — nên hậu quả thực tế là nạn nhân thỉnh thoảng bị đăng xuất một cách khó hiểu, còn
+    kẻ trộm thì vẫn ở trong cho tới lần nạn nhân đăng nhập lại.</p>
+
+    <h4>Cất token ở đâu — <strong>f</strong> đúng, và đây là chỗ không có lối thoát đẹp</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th>Chỗ cất</th><th>XSS đọc được?</th><th>Bị CSRF?</th><th>Ghi chú</th></tr>
+      <tr><td><code>localStorage</code></td><td><strong>Có</strong> — một dòng JS là lấy sạch</td><td>Không — trình duyệt không tự đính kèm</td><td>Dễ làm nhất, nên phổ biến nhất</td></tr>
+      <tr><td>Cookie <code>httpOnly</code></td><td>Không — JS không đọc nổi</td><td><strong>Có</strong> — trình duyệt tự kèm vào mọi request</td><td>Phải thêm <code>SameSite</code> + kiểm <code>Origin</code></td></tr>
+      <tr><td>Biến trong bộ nhớ</td><td>Khó hơn nhiều</td><td>Không</td><td>F5 là mất phiên — phải có refresh trong cookie đỡ lưng</td></tr>
+    </table></div>
+    <p>Cách được coi là chỉn chu nhất hiện nay: <strong>access token giữ trong biến JavaScript</strong> (mất khi
+    F5 cũng không sao, vì nó chỉ sống 15 phút), còn <strong>refresh token nằm trong cookie <code>httpOnly</code>
+    + <code>SameSite</code></strong>, và cookie đó chỉ gửi tới đúng đường dẫn <code>/auth/refresh</code>.</p>
+    <div class="flag"><p>Nhưng phải nói thẳng một điều mà nhiều bài viết né tránh: <strong>nếu đã dính XSS thì coi
+    như thua</strong>. Cookie <code>httpOnly</code> chặn kẻ tấn công <em>đọc</em> token, chứ không chặn nó
+    <em>dùng</em> — script chạy trong trang của bạn thì cứ gọi <code>fetch('/api/transfer')</code>, trình duyệt
+    vẫn ngoan ngoãn đính cookie vào. Chống XSS mới là hàng phòng ngự thật; chỗ cất token chỉ là giảm nhẹ.</p></div>
+
+    <h4>Bẫy ở phía FE — vì sao <strong>g</strong> sai</h4>
+    <p>Một màn hình bình thường bắn 5–6 request song song. Access token hết hạn đúng lúc đó thì cả 6 cùng nhận
+    401, và nếu mỗi cái tự gọi <code>/refresh</code>, bạn có <strong>6 lời gọi refresh cùng lúc</strong>.</p>
+    <p>Với server thường thì đó chỉ là lãng phí. Nhưng server này <strong>xoay vòng</strong>, nên nó là thảm hoạ:
+    lời gọi thứ nhất ghi đè sổ, năm lời gọi còn lại đang cầm token cũ → <strong>401</strong> → FE tưởng phiên chết
+    → <strong>đá người dùng ra màn hình đăng nhập</strong> dù chẳng có gì sai.</p>
+    <pre><code>let refreshPromise = null;
+
+async function ensureFreshToken() {
+  // Ai tới trước thì mở cuộc gọi. Ai tới sau thì ĐỨNG CHUNG hàng, không mở cuộc mới.
+  refreshPromise ??= callRefresh().finally(() =&gt; { refreshPromise = null; });
+  return refreshPromise;
+}</code></pre>
+    <p>Chỗ này nối thẳng về một thứ đã gặp ở TanStack Query: <strong>dedupe</strong>. Query gộp nhiều component
+    cùng hỏi một khoá thành một request; ở đây ta gộp nhiều request cùng cần token mới thành một lời gọi refresh.
+    Cùng một ý tưởng — <em>nhiều người cùng cần một thứ thì chỉ một người đi lấy, số còn lại đứng chờ</em>.</p>
+
+    <h4>Câu chốt khi phỏng vấn</h4>
+    <div class="script">
+      <p>"JWT không thu hồi được — đã ký và phát ra thì nó hợp lệ tới lúc hết hạn, server không can thiệp được.
+      Nên tôi tách hai token: <strong>access</strong> tự chứa, hạn 15 phút, mỗi request chỉ kiểm chữ ký nên không
+      chạm database; <strong>refresh</strong> hạn 7 ngày nhưng có lưu ở Redis, nên thu hồi được bằng cách xoá key.</p>
+      <p>Đổi lại là mất tính stateless — nhưng chỉ mất ở <strong>một lần mỗi 15 phút</strong> chứ không phải mỗi
+      request, và mua về được logout thật cùng khả năng khoá tài khoản tức thì. Mỗi lần refresh tôi
+      <strong>xoay vòng</strong> token, nên token cũ chết ngay.</p>
+      <p>Hai chỗ tôi biết là còn thiếu: chưa có <strong>reuse detection</strong> — token đã xoay mà quay lại thì
+      nên huỷ cả phiên và cảnh báo, chứ hiện giờ chỉ trả 401; và key đang là <code>rt:{userId}</code> nên mỗi
+      người chỉ đăng nhập được một thiết bị, muốn nhiều thì phải thêm <code>deviceId</code> vào key.
+      Phía FE thì bắt buộc phải gộp các lời gọi refresh vào một promise chung, nếu không rotation sẽ tự đá văng
+      người dùng."</p>
+    </div>
+  `,
+  followups: [
+    { q: 'Vậy access token 15 phút thì đổi mật khẩu xong, token cũ vẫn sống thêm 15 phút à?',
+      a: '<p>Đúng, và đó là <strong>hệ quả không tránh được</strong> của việc chọn token tự chứa. Xoá <code>rt:{userId}</code> giết được refresh ngay lập tức, nhưng access token đang nằm trong tay ai đó thì vẫn qua cửa cho tới lúc hết hạn.</p><p>Có ba cách xử lý, xếp theo giá phải trả:</p><ul><li><strong>Chấp nhận.</strong> Rút TTL xuống 5 phút. Đa số hệ thống dừng ở đây, vì cửa sổ 5 phút hiếm khi đáng để trả giá.</li><li><strong>Danh sách đen.</strong> Lúc đổi mật khẩu, ghi vào Redis <code>revoked:{userId}</code> kèm mốc thời gian; guard so <code>iat</code> của token với mốc đó. Nhưng như vậy là <strong>quay lại tra Redis mỗi request</strong> — mất đúng cái ưu điểm ban đầu.</li><li><strong>Cột phiên bản.</strong> Nhét <code>tokenVersion</code> vào payload, đổi mật khẩu thì tăng số. Vẫn phải tra để biết số hiện tại, nên bản chất giống cách trên.</li></ul><p>Nhìn kỹ thì cả ba đều là biến thể của cùng một sự thật: <strong>muốn thu hồi tức thì thì phải tra sổ</strong>. Không có đường vòng. Việc thiết kế chỉ là chọn tra sổ <em>bao lâu một lần</em>.</p>' },
+    { q: 'Reuse detection viết cụ thể thế nào?',
+      a: '<p>Ý tưởng: mỗi lần đăng nhập mở ra một <strong>họ token</strong> (<code>familyId</code>), và mọi lần refresh sau đó đều thuộc cùng họ ấy. Thay vì lưu một chuỗi, lưu một object:</p><pre><code>rt:{familyId} = { userId, current: T5, used: [T1,T2,T3,T4] }</code></pre><p>Khi có token chìa ra:</p><ul><li>Khớp <code>current</code> → hợp lệ, xoay vòng, đẩy token cũ vào <code>used</code></li><li>Nằm trong <code>used</code> → <strong>báo động</strong>. Xoá sạch cả họ, buộc đăng nhập lại, ghi log</li><li>Không thuộc đâu cả → 401 bình thường</li></ul><p>Điểm tinh tế: nạn nhân <strong>vẫn</strong> bị đăng xuất. Khác biệt nằm ở chỗ kẻ trộm <strong>cũng</strong> bị đá ra cùng lúc, và bạn <strong>biết</strong> chuyện đã xảy ra để còn cảnh báo người dùng. Trước đó thì mọi thứ diễn ra trong im lặng.</p><p>Cái giá: <code>used</code> phình ra theo số lần refresh, nên phải giới hạn (giữ 10 cái gần nhất là đủ, vì kẻ trộm thường dùng token ngay chứ không để dành).</p>' },
+    { q: 'Nếu Redis chết thì sao? Cả hệ thống đăng nhập sập luôn à?',
+      a: '<p>Đây là câu hỏi rất đáng hỏi, và câu trả lời chia làm hai nửa rõ rệt.</p><p><strong>Nửa đang chạy vẫn sống.</strong> Access token không tra Redis, nên mọi request thường vẫn qua cửa bình thường. Người dùng không thấy gì trong tối đa 15 phút.</p><p><strong>Nửa gia hạn thì chết.</strong> <code>/refresh</code> phải tra sổ, sổ mất thì ai cũng bị 401. Nghĩa là sau khoảng 15 phút, <strong>toàn bộ người dùng bị đăng xuất dần dần</strong> — không sập cái rụp mà rụng lác đác, khó chẩn đoán hơn nhiều.</p><p>Vì thế Redis ở đây không còn là "cache cho nhanh" mà đã trở thành <strong>hạ tầng thiết yếu</strong>, phải có persistence và replica. Một cách khác là chuyển bảng refresh token sang Postgres — chậm hơn, nhưng chỉ 15 phút một lần thì độ chậm đó không ai cảm thấy, mà lại được nằm chung một nguồn sự thật với dữ liệu người dùng.</p><p>Nguyên tắc rút ra: <strong>hỏi "thứ này chết thì cái gì hỏng" cho từng thành phần</strong>. Nhiều thứ mang danh cache nhưng thực chất đã là thiết yếu từ lâu mà không ai để ý.</p>' },
+    { q: 'Sao không bỏ luôn JWT, quay về session id lưu Redis cho gọn?',
+      a: '<p>Hoàn toàn hợp lý, và với phần lớn ứng dụng thì <strong>đó mới là lựa chọn đúng</strong>. Session id là một chuỗi ngẫu nhiên vô nghĩa, mọi ý nghĩa nằm trong Redis: thu hồi tức thì, đổi quyền có hiệu lực ngay, không có chuyện token cũ còn sống 15 phút.</p><p>Cái giá là <strong>mỗi request một lần tra Redis</strong>. Với một dịch vụ thì không sao. JWT chỉ thật sự đáng khi có <strong>nhiều dịch vụ độc lập</strong> cùng phải xác thực: mỗi dịch vụ tự kiểm chữ ký bằng khoá công khai, không cần dịch vụ nào gọi tới dịch vụ auth.</p><p>Nói thẳng thì phần lớn dự án chọn JWT không phải vì cân nhắc điều trên, mà vì <em>tutorial nào cũng dạy thế</em>. Trả lời phỏng vấn mà nêu được đúng ranh giới này — <strong>một dịch vụ thì session, nhiều dịch vụ thì JWT</strong> — sẽ tách bạn khỏi số đông ngay lập tức.</p>' },
+  ],
+},
+
+/* ---------------------------------------------------------- FS */
+{
+  id: 'fs-01',
+  section: 'fs',
+  topic: 'CSRF & CORS',
+  level: 'khó',
+  multi: true,
+  q: 'API của bạn dùng <strong>cookie</strong> để giữ phiên, và đã cấu hình CORS chỉ cho phép đúng origin của trang web nhà. Một người dùng đang đăng nhập vô tình mở trang <code>evil.com</code>, trang này chứa đoạn mã dưới đây. Nhận định nào <strong>đúng</strong>?',
+  code: `&lt;!-- trên evil.com --&gt;
+&lt;form id="f" action="https://bank.com/api/transfer" method="POST"&gt;
+  &lt;input name="to"     value="ke-tan-cong"&gt;
+  &lt;input name="amount" value="10000000"&gt;
+&lt;/form&gt;
+&lt;script&gt;f.submit()&lt;/script&gt;`,
+  options: [
+    { id: 'a', text: 'Cấu hình CORS chặt như trên đã <strong>đủ</strong> để chặn cuộc tấn công này — request từ <code>evil.com</code> sẽ không tới được server' },
+    { id: 'b', text: 'Trình duyệt chặn <strong>đọc phản hồi</strong> chứ không chặn <strong>gửi</strong> request, nên server vẫn nhận và vẫn chuyển tiền; việc <code>evil.com</code> không đọc được kết quả chẳng cứu vãn được gì' },
+    { id: 'c', text: 'Một <code>&lt;form&gt;</code> HTML thuần như trên <strong>không kích hoạt preflight</strong>, nên không hề có lượt <code>OPTIONS</code> nào để server kịp từ chối trước' },
+    { id: 'd', text: 'CORS được kiểm ở phía server, nên gọi bằng <code>curl</code> hay Postman cũng bị nó chặn y hệt' },
+    { id: 'e', text: 'Muốn chặn thật thì phải đặt cookie phiên là <code>SameSite=Lax</code> (hoặc <code>Strict</code>), kiểm header <code>Origin</code>, hoặc dùng CSRF token' },
+    { id: 'f', text: 'Nếu chuyển sang để access token ở header <code>Authorization</code> thay vì cookie thì CSRF gần như biến mất, vì trình duyệt <strong>không tự đính</strong> header đó vào request do trang lạ tạo ra' },
+    { id: 'g', text: 'CORS là cơ chế <strong>thắt chặt</strong> bảo mật: không có CORS thì trình duyệt vốn cho phép đọc dữ liệu chéo origin thoải mái' },
+  ],
+  correct: ['b', 'c', 'e', 'f'],
+  why: `
+    <div class="script">
+      <p><strong>CORS không chống được CSRF, vì nó chặn đúng cái mà kẻ tấn công không cần.</strong></p>
+      <p>Kẻ tấn công không muốn <em>đọc</em> gì cả. Nó chỉ muốn <em>một hành động xảy ra</em>. Và trình duyệt
+      chưa bao giờ ngăn việc gửi request đi.</p>
+    </div>
+
+    <h4>Người đưa thư quá nhiệt tình</h4>
+    <p>Hãy coi trình duyệt là một người đưa thư. Anh ta có một thói quen: hễ thấy lá thư nào gửi tới
+    <code>bank.com</code>, anh ta <strong>tự động kẹp thẻ căn cước của bạn vào</strong> trước khi bỏ vào thùng thư.
+    Đó chính là cookie — bạn không phải làm gì, trình duyệt tự kèm.</p>
+    <p>Thói quen ấy rất tiện, cho tới lúc bạn nhận ra: anh ta <strong>không hỏi ai đã viết lá thư</strong>.
+    Kẻ xấu viết thư, nhét vào tay anh ta, anh ta vẫn kẹp thẻ của bạn vào rồi mang đi giao. Ngân hàng mở ra, thấy
+    thẻ căn cước hợp lệ, và làm theo.</p>
+    <p><strong>Toàn bộ CSRF chỉ có thế.</strong> Không có lỗ hổng nào bị khai thác, không có mật khẩu nào bị lộ.
+    Kẻ tấn công chỉ mượn cái thói quen tự-kẹp-thẻ của trình duyệt.</p>
+    <p>Vậy CORS đứng ở đâu trong câu chuyện? Người đưa thư còn một quy tắc thứ hai:
+    <strong>thư trả lời thì anh ta chỉ đưa cho đúng người gửi thật</strong>. Kẻ xấu có nhét thư đi được thì cũng
+    không được xem ngân hàng trả lời gì. CORS chính là tờ giấy để ngân hàng nói <em>"trang này thì cho xem cũng
+    được"</em>. Nhưng để ý cho kỹ: quy tắc đó chỉ nói về <strong>thư trả lời</strong>. Lá thư đi thì đã đi rồi.</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 246" role="img" aria-label="Nam buoc cua tan cong CSRF, tien da chuyen o buoc ba trong khi CORS chi chan o buoc nam">
+        <defs>
+          <marker id="ar18" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        </defs>
+
+        <line x1="13" y1="18" x2="13" y2="212" stroke="currentColor" stroke-width="1" opacity=".3"/>
+
+        <circle cx="13" cy="24" r="10" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="13" y="28" font-size="9" font-family="monospace" fill="currentColor" text-anchor="middle">1</text>
+        <text x="34" y="22" font-size="9.5" font-family="monospace" fill="currentColor">Nạn nhân đăng nhập bank.com — cookie phiên nằm sẵn trong trình duyệt</text>
+        <text x="34" y="35" font-size="8.5" font-family="monospace" fill="currentColor" opacity=".65">có thể từ hôm qua; tab bank.com thậm chí đã đóng</text>
+
+        <circle cx="13" cy="66" r="10" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="13" y="70" font-size="9" font-family="monospace" fill="currentColor" text-anchor="middle">2</text>
+        <text x="34" y="64" font-size="9.5" font-family="monospace" fill="currentColor">Nạn nhân mở evil.com — form tự submit, không cần bấm gì</text>
+        <text x="34" y="77" font-size="8.5" font-family="monospace" fill="currentColor" opacity=".65">chỉ cần một cú click vào link trong email là đủ</text>
+
+        <circle cx="13" cy="112" r="10" fill="none" stroke="var(--bad)" stroke-width="1.6"/>
+        <text x="13" y="116" font-size="9" font-family="monospace" fill="var(--bad)" text-anchor="middle">3</text>
+        <rect x="30" y="94" width="590" height="38" rx="5" fill="none" stroke="var(--bad)" stroke-width="1.5"/>
+        <text x="40" y="110" font-size="9.5" font-family="monospace" fill="var(--bad)">Trình duyệt GỬI request và TỰ KÈM COOKIE — server thấy phiên hợp lệ</text>
+        <text x="40" y="124" font-size="10" font-family="monospace" fill="var(--bad)">TIỀN ĐÃ CHUYỂN. Xong. Mọi thứ sau đây không còn ý nghĩa gì.</text>
+
+        <circle cx="13" cy="154" r="10" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="13" y="158" font-size="9" font-family="monospace" fill="currentColor" text-anchor="middle">4</text>
+        <text x="34" y="152" font-size="9.5" font-family="monospace" fill="currentColor">Server trả về phản hồi 200 OK</text>
+        <text x="34" y="165" font-size="8.5" font-family="monospace" fill="currentColor" opacity=".65">không có header Access-Control-Allow-Origin cho evil.com</text>
+
+        <circle cx="13" cy="196" r="10" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <text x="13" y="200" font-size="9" font-family="monospace" fill="var(--accent)" text-anchor="middle">5</text>
+        <rect x="30" y="180" width="424" height="32" rx="5" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+        <text x="40" y="193" font-size="9.5" font-family="monospace" fill="var(--accent)">CORS chặn — evil.com không ĐỌC được phản hồi</text>
+        <text x="40" y="206" font-size="8.5" font-family="monospace" fill="var(--accent)">console báo lỗi đỏ, trông rất giống như đã được bảo vệ</text>
+
+        <line x1="454" y1="196" x2="482" y2="196" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar18)"/>
+        <text x="492" y="193" font-size="9" font-family="monospace" fill="currentColor">kẻ tấn công:</text>
+        <text x="492" y="206" font-size="9" font-family="monospace" fill="var(--bad)">"ai cần đọc?"</text>
+
+        <text x="0" y="236" font-size="9.5" font-family="monospace" fill="currentColor" opacity=".85">Hàng rào dựng ở bước 5. Thiệt hại xảy ra ở bước 3. Đó là toàn bộ vấn đề.</text>
+      </svg>
+      <figcaption>Lỗi đỏ trong console <strong>không phải bằng chứng đã an toàn</strong> — nó chỉ là biên lai báo rằng chuyện đã xong xuôi.</figcaption>
+    </figure>
+
+    <h4>Cả hai mọc ra từ cùng một gốc</h4>
+    <p>CORS và CSRF nghe như hai chủ đề rời rạc, nhưng chúng là <strong>hai mặt của cùng một luật</strong>:
+    <em>same-origin policy</em>. Luật đó nói một câu duy nhất, và câu đó <strong>bất đối xứng</strong>:</p>
+    <div class="tbl-wrap"><table>
+      <tr><th></th><th>Trang lạ có làm được không?</th><th>Ai quản chuyện này?</th></tr>
+      <tr><td><strong>GỬI</strong> request tới origin khác</td><td><strong>Được</strong> — thoải mái, kèm cả cookie</td><td>Không ai cả → <strong>khe hở CSRF</strong></td></tr>
+      <tr><td><strong>ĐỌC</strong> phản hồi từ origin khác</td><td>Không, trừ khi được cho phép</td><td><strong>CORS</strong> là cơ chế cho phép đó</td></tr>
+    </table></div>
+    <p>Nhìn bảng này là hiểu ngay vì sao hai thứ không thay thế nhau được: <strong>chúng nằm ở hai dòng khác
+    nhau</strong>. CSRF khai thác dòng trên, CORS chỉ có tiếng nói ở dòng dưới.</p>
+    <p>Và cũng từ bảng này mà thấy vì sao <strong>g</strong> sai. CORS không hề <em>thắt chặt</em> điều gì —
+    mặc định trình duyệt <strong>đã cấm</strong> đọc chéo origin từ trước khi CORS ra đời. CORS là cơ chế
+    <strong>nới lỏng</strong>: nó tồn tại để server nói <em>"chỗ này tôi cho phép"</em>. Cấu hình CORS sai không
+    làm hệ thống kém an toàn hơn mặc định — nó chỉ mở cửa rộng hơn mức bạn định mở.</p>
+    <div class="flag"><p>Ngược lại, câu nói cửa miệng <em>"bị lỗi CORS"</em> gần như luôn có nghĩa là
+    <strong>server chưa cho phép</strong>, chứ không phải trình duyệt đang phá bạn. Trình duyệt chỉ đang thi hành
+    mặc định. Người sửa phải là server.</p></div>
+
+    <h4>Vì sao không có preflight — <strong>c</strong> đúng</h4>
+    <p>Nhiều người tin rằng mọi request chéo origin đều bị hỏi trước bằng một lượt <code>OPTIONS</code>. Không.
+    Preflight chỉ xuất hiện với request <strong>"không đơn giản"</strong>. Còn những dạng dưới đây được coi là
+    đơn giản, vì chúng vốn đã làm được từ thời HTML chưa có JavaScript:</p>
+    <ul>
+      <li><code>GET</code>, <code>HEAD</code>, hoặc <code>POST</code></li>
+      <li><code>Content-Type</code> thuộc ba loại: <code>application/x-www-form-urlencoded</code>,
+      <code>multipart/form-data</code>, <code>text/plain</code></li>
+      <li>Không có header tự đặt thêm</li>
+    </ul>
+    <p>Cái form ở đề bài rơi trúng cả ba điều kiện. Nó bay thẳng, không xin phép ai.</p>
+    <div class="flag"><p>Đây cũng là lý do <strong>API nhận JSON thì khó bị CSRF hơn</strong>: gửi
+    <code>Content-Type: application/json</code> là kích hoạt preflight, mà preflight thất bại thì request thật
+    không bao giờ được gửi. Nhưng <strong>đừng coi đó là biện pháp bảo vệ</strong> — nếu server dễ dãi chấp nhận
+    cả <code>text/plain</code>, kẻ tấn công chỉ cần đổi <code>Content-Type</code> là lọt qua khe hẹp đó.
+    Nó là may mắn, không phải hàng phòng ngự.</p></div>
+
+    <h4>CORS sống ở đâu — vì sao <strong>d</strong> sai</h4>
+    <p>CORS <strong>chỉ tồn tại bên trong trình duyệt</strong>. Server chỉ làm mỗi việc là gắn thêm mấy dòng
+    header vào phản hồi; người <em>quyết định chặn hay không</em> là trình duyệt, sau khi phản hồi đã về tới nơi.</p>
+    <p>Nghĩa là <code>curl https://bank.com/api/transfer</code> chạy ngon lành, header CORS có hay không chẳng
+    liên quan. Postman cũng vậy. Bất cứ thứ gì không phải trình duyệt đều không biết CORS là gì.</p>
+    <div class="script">
+      <p><strong>CORS không bảo vệ server. Nó bảo vệ người dùng khỏi các trang web khác.</strong>
+      Nếu endpoint của bạn cần được bảo vệ, thứ bảo vệ nó phải là <em>xác thực và phân quyền</em> — CORS
+      không đóng vai đó, chưa bao giờ.</p>
+    </div>
+
+    <h4>Chống thật thì chống thế nào — <strong>e</strong> và <strong>f</strong></h4>
+    <p>Đã biết khe hở nằm ở vế <em>gửi</em>, các biện pháp đều nhắm vào đúng một câu hỏi:
+    <strong>request này có thật sự do trang của tôi tạo ra không?</strong></p>
+    <div class="tbl-wrap"><table>
+      <tr><th>Cách</th><th>Cơ chế</th><th>Điểm yếu</th></tr>
+      <tr><td><code>SameSite=Lax</code></td><td>Trình duyệt <strong>ngừng tự kèm cookie</strong> vào request chéo site, trừ điều hướng <code>GET</code></td><td>Chặn đúng ca ở đề bài. Nhưng nếu có endpoint đổi dữ liệu bằng <code>GET</code> thì vẫn lọt</td></tr>
+      <tr><td><code>SameSite=Strict</code></td><td>Không kèm cookie trong mọi ca chéo site</td><td>Bấm link từ Google về là thấy mình chưa đăng nhập — trải nghiệm tệ</td></tr>
+      <tr><td>Kiểm <code>Origin</code></td><td>Header này do <strong>trình duyệt đặt</strong>, JS không sửa được</td><td>Vài ca cũ không gửi <code>Origin</code>; phải quyết định xử lý sao khi thiếu</td></tr>
+      <tr><td>CSRF token</td><td>Trang nhà nhúng một chuỗi ngẫu nhiên; trang lạ <strong>không đọc được</strong> nên không đoán ra</td><td>Phải quản vòng đời token; nặng tay hơn</td></tr>
+      <tr><td>Token ở <code>Authorization</code></td><td>Trình duyệt <strong>không tự đính</strong> header này bao giờ</td><td>Phải tự lưu token → đổi sang đối mặt với XSS</td></tr>
+    </table></div>
+    <p>Hàng cuối chính là <strong>f</strong>, và nó đáng chú ý vì <em>không phải một biện pháp phòng thủ</em> —
+    nó xoá bỏ tiền đề. CSRF sống được là nhờ <strong>trình duyệt tự kèm thông tin xác thực</strong>. Bỏ cookie,
+    chuyển sang header do chính code của bạn gắn vào, thì cái thói quen ấy không còn, và cả lớp tấn công biến mất
+    theo. Đó cũng là lý do phần lớn API dùng Bearer token gần như không bao giờ nhắc tới CSRF.</p>
+    <div class="flag"><p>Nhưng nhớ lại câu về JWT: bỏ cookie để né CSRF nghĩa là <strong>token phải nằm ở chỗ
+    JavaScript đọc được</strong> — tức là đổi CSRF lấy XSS. Đây là chỗ hai câu nối vào nhau, và cũng là lý do
+    lựa chọn "chỉn chu nhất" thường là <em>lai</em>: access token trong bộ nhớ, refresh token trong cookie
+    <code>httpOnly</code> + <code>SameSite</code>.</p></div>
+
+    <h4>Câu chốt khi phỏng vấn</h4>
+    <div class="script">
+      <p>"CORS và CSRF cùng mọc ra từ same-origin policy, nhưng ở hai vế khác nhau. Trình duyệt
+      <strong>chặn đọc phản hồi</strong> chéo origin, chứ <strong>không chặn gửi</strong> request — CORS là cơ chế
+      để server nới lỏng vế đọc, còn CSRF khai thác vế gửi.</p>
+      <p>Nên CORS không chống được CSRF: form từ trang lạ vẫn bay tới server, trình duyệt vẫn tự kèm cookie, hành
+      động vẫn xảy ra. CORS chỉ ngăn trang lạ đọc kết quả — mà kẻ tấn công có cần đọc đâu. Thêm nữa, form HTML
+      thuần là request đơn giản nên không có preflight để chặn trước, và CORS vốn chỉ tồn tại trong trình duyệt,
+      <code>curl</code> thì bỏ qua hoàn toàn.</p>
+      <p>Chống thật thì tôi dùng <code>SameSite=Lax</code> cho cookie phiên, kiểm header <code>Origin</code> ở các
+      endpoint đổi dữ liệu, và thêm CSRF token nếu là thao tác nhạy cảm. Hoặc dứt khoát hơn: bỏ cookie, để token
+      ở header <code>Authorization</code> — trình duyệt không tự đính header đó, nên CSRF không còn đất sống.
+      Đổi lại là phải lo XSS."</p>
+    </div>
+  `,
+  followups: [
+    { q: 'Đã có <code>SameSite=Lax</code> rồi thì còn cần CSRF token nữa không?',
+      a: '<p>Với đa số ứng dụng thì <strong>không</strong>, và đó là thay đổi lớn của mấy năm gần đây — trình duyệt hiện đại mặc định coi cookie không khai <code>SameSite</code> như <code>Lax</code>, nên cả một lớp tấn công co lại đáng kể mà không ai phải làm gì.</p><p>Nhưng vẫn nên thêm CSRF token ở ba trường hợp:</p><ul><li><strong>Thao tác thật sự nhạy cảm</strong> — chuyển tiền, đổi mật khẩu, xoá tài khoản. Phòng thủ nhiều lớp không thừa.</li><li><strong>Còn phải đỡ trình duyệt cũ</strong> chưa mặc định <code>Lax</code>.</li><li><strong>Có subdomain không hoàn toàn tin được.</strong> Đây là điểm hay bị bỏ sót: <code>SameSite</code> tính theo <em>site</em> chứ không phải <em>origin</em>, nên <code>evil.example.com</code> vẫn được coi là cùng site với <code>app.example.com</code>. Ai chiếm được một subdomain là <code>SameSite</code> mất tác dụng.</li></ul><p>Chi tiết cuối cùng đó rất đáng nhớ, vì nó cho thấy <strong>ranh giới bảo mật của cookie rộng hơn ranh giới của CORS</strong> — hai khái niệm "cùng chỗ" khác nhau, dùng lẫn là hiểu sai.</p>' },
+      { q: 'API công khai, không dùng cookie — vậy cấu hình CORS còn ý nghĩa gì?',
+      a: '<p>Ít hơn nhiều so với mọi người tưởng, và câu này lộ ra ngay ai hiểu bản chất.</p><p>Nếu API không dùng cookie và mọi endpoint đều đòi <code>Authorization</code>, thì mở <code>Access-Control-Allow-Origin: *</code> <strong>không tạo ra lỗ hổng nào</strong>. Trang lạ có gọi được thì cũng không có token, và trình duyệt <em>không cho</em> kết hợp <code>*</code> với <code>credentials: &#39;include&#39;</code> — nên không có đường nào mượn phiên của người dùng.</p><p>Vậy giới hạn origin để làm gì? Chủ yếu là <strong>giảm bề mặt</strong> và <strong>phòng cho tương lai</strong>: hôm nay không dùng cookie không có nghĩa sáu tháng nữa vẫn thế. Nó cũng khiến người khác khó nhúng API của bạn vào trang họ hơn — bất tiện cho họ, chứ không phải rào cản thật.</p><p>Cái <strong>thật sự nguy hiểm</strong> là cấu hình kiểu <em>lấy nguyên header <code>Origin</code> của request rồi phản chiếu lại</em>, kèm <code>Allow-Credentials: true</code>. Nghe thì tiện, nhưng nó có nghĩa là <strong>bất kỳ trang nào cũng được cho phép</strong> — bạn vừa tự tay dựng ra đúng cái lỗ hổng mà CORS sinh ra để tránh.</p>' },
+    { q: 'Vì sao trình duyệt lại cho gửi request chéo origin ngay từ đầu? Cấm luôn có phải gọn không?',
+      a: '<p>Vì <strong>web đã như vậy từ trước khi có bảo mật</strong>. Thẻ <code>&lt;img src&gt;</code> trỏ sang máy chủ khác, <code>&lt;form action&gt;</code> submit sang trang khác, <code>&lt;script src&gt;</code> nạp thư viện từ CDN — tất cả đều là request chéo origin, và tất cả đều có từ những năm 90.</p><p>Cấm gửi chéo origin đồng nghĩa với <strong>phá vỡ toàn bộ web hiện có</strong>. Không trình duyệt nào dám làm, vì trình duyệt nào làm trước sẽ là trình duyệt bị người dùng gỡ bỏ đầu tiên.</p><p>Nên thay vì cấm, họ vá theo hướng khác: chặn <em>đọc</em> (same-origin policy, ra đời sau), rồi thêm cơ chế nới lỏng có kiểm soát (CORS), rồi thêm <code>SameSite</code> để bịt nốt vế gửi <em>mà không phá thứ đang chạy</em> — <code>Lax</code> vẫn cho phép điều hướng <code>GET</code> chính là để không làm hỏng chuyện bấm link từ trang khác.</p><p>Bài học rộng hơn, gặp lại ở khắp nơi: <strong>bảo mật của các hệ thống lâu đời hầu như luôn là các lớp vá chồng lên nhau, không phải một thiết kế mạch lạc.</strong> Hiểu <em>vì sao nó lởm chởm như thế</em> giúp nhớ lâu hơn nhiều so với học thuộc từng luật.</p>' },
+    { q: 'Preflight tốn thêm một vòng mạng cho mỗi request à?',
+      a: '<p>Không — kết quả preflight được <strong>cache</strong>. Server trả <code>Access-Control-Max-Age: 86400</code> thì trình duyệt nhớ trong một ngày, chỉ hỏi lại khi hết hạn.</p><p>Nhưng có hai bẫy thực tế:</p><ul><li>Trình duyệt <strong>tự đặt trần</strong> cho giá trị này — Chrome giới hạn 2 tiếng, Firefox 24 tiếng — nên khai 7 ngày cũng vô ích.</li><li>Cache tính theo <strong>từng tổ hợp URL + method + header</strong>. API REST nhiều đường dẫn thì mỗi đường dẫn một lượt preflight riêng, và lần tải trang đầu tiên sẽ thấy rõ độ trễ.</li></ul><p>Muốn né hẳn thì đưa API về <strong>cùng origin</strong> với trang web — đặt sau cùng một domain, đường dẫn <code>/api</code>, cho reverse proxy chuyển tiếp. Cùng origin thì không có CORS, không có preflight, và tiện thể cookie <code>SameSite=Strict</code> cũng dùng được thoải mái.</p><p>Đây là một lựa chọn hạ tầng hay bị bỏ qua: <strong>rất nhiều rắc rối về CORS biến mất không phải nhờ cấu hình khéo, mà nhờ không còn chéo origin nữa.</strong></p>' },
+  ],
+},
 ];
 
 /* ============================================================
@@ -3419,7 +3859,7 @@ function chip(label, count, on, onClick) {
 function renderFilters() {
   const secWrap = $('#secChips');
   secWrap.innerHTML = '';
-  const secs = [['fe', 'Front-end'], ['be', 'Back-end'], ['all', 'Tất cả']];
+  const secs = [...Object.entries(SECTIONS), ['all', 'Tất cả']];
   secs.forEach(([k, label]) => {
     const n = k === 'all' ? BANK.length : BANK.filter((q) => q.section === k).length;
     secWrap.appendChild(chip(label, n, st.section === k, () => {
