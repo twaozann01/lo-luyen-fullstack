@@ -87,6 +87,14 @@ check('BANK là mảng và mọi câu đủ trường bắt buộc', () => {
   return BANK.length + ' câu, id không trùng';
 });
 
+check('LETTER đủ chữ cái cho câu nhiều đáp án nhất', () => {
+  const L = g("LETTER");
+  const max = Math.max(...g("BANK").map((q) => q.options.length));
+  const worst = g("BANK").find((q) => q.options.length === max);
+  must(L.length >= max, `câu ${worst.id} có ${max} đáp án nhưng LETTER chỉ có ${L.length} chữ ("${L}") — đáp án thứ ${L.length + 1} sẽ hiện "undefined"`);
+  return `nhiều nhất ${max} đáp án (${worst.id}), LETTER có ${L.length}`;
+});
+
 check('STATUS còn nguyên vẹn', () => {
   const S = g("STATUS");
   must(Array.isArray(S), 'STATUS không phải mảng');

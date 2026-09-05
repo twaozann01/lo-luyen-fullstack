@@ -3581,6 +3581,503 @@ async function ensureFreshToken() {
   ],
 },
 
+{
+  id: 'be-09',
+  section: 'be',
+  topic: 'Idempotency',
+  level: 'khó',
+  multi: true,
+  q: 'Nạp ví qua VNPay. Xét <strong>hai</strong> tình huống khác nhau: <strong>(1)</strong> cổng gọi IPN hai lần <em>song song</em> trên hai instance; <strong>(2)</strong> người dùng sốt ruột bấm nút &#34;Nạp tiền&#34; hai lần ở FE. Nhận định nào <strong>đúng</strong>?',
+  code: `// ① NHẬN IPN — cổng gọi về, đây là chỗ tiền vào ví
+async handleIpn(query) {
+  const payment = await prisma.payment.findUnique({ where: { id: r.paymentId } });
+  if (payment.status !== PENDING && payment.status !== PROCESSING) return ACK.already;
+
+  await prisma.$transaction(async (tx) =&gt; {
+    await this.ledger.post({ kind: TOPUP, refType: 'PAYMENT', refId: payment.id,
+                             lines: [ cổng −500k, ví user +500k ] }, tx);   // ← để ý tham số tx
+    await tx.payment.update({ where: { id: payment.id },
+                              data: { status: SUCCEEDED, providerRef: r.providerRef } });
+  });
+}
+
+// ② TẠO GIAO DỊCH — người dùng bấm nút thì gọi vào đây
+async createPayment(userId, dto) {
+  const payment = await prisma.payment.create({           // không where, không điều kiện
+    data: { userId, amount: dto.amount, status: PROCESSING },
+  });
+  return { paymentId: payment.id, paymentUrl: gateway.createPaymentUrl(...) };
+}
+
+// ③ HAI RÀNG BUỘC TRONG schema.prisma
+model Payment      { providerRef String? @unique }
+model JournalEntry { @@unique([kind, refType, refId]) }`,
+  options: [
+    { id: 'a', text: 'Câu <code>if (status !== PENDING && status !== PROCESSING)</code> <strong>không</strong> chặn được hai IPN song song — nó chỉ là <strong>đường nhanh</strong> cho ca gọi lại tuần tự, vì lệnh đọc và lệnh ghi là hai lượt đi về database riêng biệt' },
+    { id: 'b', text: 'Chốt chặn thật cho ca song song là <code>providerRef @unique</code> trên bảng <code>payments</code>, đúng như comment trong code nói' },
+    { id: 'c', text: 'Chốt chặn thật nằm ở <code>@@unique([kind, refType, refId])</code> của bảng chứng từ: bộ ba <code>(TOPUP, &#39;PAYMENT&#39;, paymentId)</code> đóng vai &#34;số phiếu&#34;, IPN thứ hai đụng vào là cả transaction bị rollback' },
+    { id: 'd', text: 'Truyền <code>tx</code> xuống <code>ledger.post</code> là bắt buộc — không phải để chống cộng ví hai lần, mà để <strong>cộng ví và chốt trạng thái <code>payment</code> cùng sống cùng chết</strong>; tách ra thì hỏng ở giữa sẽ để lại ví đã có tiền mà <code>payment</code> vẫn <code>PROCESSING</code>' },
+    { id: 'e', text: 'Ở tình huống <strong>(2)</strong>, <strong>mọi</strong> ràng buộc unique kể trên đều vô dụng, vì hai lần bấm sinh ra hai dòng <code>payment</code> độc lập, dẫn tới hai giao dịch VNPay <em>thật</em> với hai mã khác nhau' },
+    { id: 'f', text: 'Server vẫn tự phát hiện được ca bấm nhầm: chỉ cần chặn các request trùng <code>userId</code> và số tiền trong vòng 30 giây' },
+    { id: 'g', text: '<code>Idempotency-Key</code> phải do client sinh <strong>một lần cho mỗi Ý ĐỊNH</strong> (lúc mở màn hình nạp tiền), chứ không phải mỗi lần gọi API — sinh ngay trước <code>axios.post</code> là cơ chế mất sạch tác dụng' },
+    { id: 'h', text: 'Khi đã có bảng lưu <code>Idempotency-Key</code> rồi thì phía server chỉ cần tra bảng xem khoá tồn tại chưa, chưa có thì xử lý — thế là đủ' },
+  ],
+  correct: ['a', 'c', 'd', 'e', 'g'],
+  why: `
+    <div class="script">
+      <p><strong>Chống làm trùng luôn quy về việc đặt một cái TÊN cho công việc, rồi bắt database bảo
+      đảm cái tên đó chỉ dùng được một lần.</strong></p>
+      <p>Câu hỏi thật không phải "chống thế nào", mà là <strong>ai đặt cái tên đó</strong>. Hai tình huống
+      trong đề khác nhau đúng ở chỗ này — và đó là toàn bộ lý do <code>Idempotency-Key</code> tồn tại.</p>
+    </div>
+
+    <h4>Quán phở</h4>
+    <p>Bạn gọi <em>"cho một tô phở"</em>. Quán ồn, bạn không nghe thấy người phục vụ đáp lại. Bạn gọi lại:
+    <em>"cho một tô phở"</em>. Bếp làm một tô hay hai tô?</p>
+    <p>Không có câu trả lời chung. Nó phụ thuộc vào <strong>cái phiếu</strong>:</p>
+    <ul>
+      <li>Người phục vụ ghi cả hai lần vào <strong>cùng phiếu số 47</strong> → bếp nhìn phiếu 47, thấy đã có
+      "một tô phở", không làm thêm. <strong>Một tô.</strong></li>
+      <li>Mỗi lần gọi xé một phiếu mới → bếp nhận phiếu 47 và phiếu 48. <strong>Hai tô.</strong></li>
+    </ul>
+    <p>Và đây là điều người ta hay bỏ qua: ở trường hợp thứ hai, <strong>bếp không hề làm sai</strong>. Bếp
+    không có cách nào biết bạn chỉ muốn một tô. Hai lời gọi giống hệt nhau — nó có thể là <em>bạn nói lại
+    vì không nghe thấy</em>, mà cũng có thể là <em>bạn đói nên muốn hai tô thật</em>.</p>
+    <div class="flag"><p>Giữ hình ảnh này trong đầu, vì cả bài chỉ là nó. Tình huống <strong>(1)</strong> là ca
+    <em>đã có sẵn số phiếu</em>. Tình huống <strong>(2)</strong> là ca <em>chưa ai đánh số phiếu cả</em>.</p></div>
+
+    <h4>Tình huống (1) — hai IPN song song</h4>
+    <p>Trước hết phải hiểu vì sao chuyện này xảy ra. VNPay đòi bạn trả về <code>{RspCode:&nbsp;'00'}</code>
+    nghĩa là <em>"tôi nhận rồi, đừng gọi nữa"</em>. Không nhận được câu đó — mạng lỗi, server chậm, timeout —
+    <strong>nó sẽ gọi lại</strong>. Đây không phải sự cố mà là <strong>hợp đồng</strong>: mọi cổng thanh toán,
+    mọi hàng đợi tin nhắn đều làm vậy.</p>
+    <p>Giờ lần theo hai lời gọi chồng lên nhau về thời gian:</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 268" role="img" aria-label="Hai instance cung xu ly mot IPN: ca hai deu doc duoc PROCESSING va lot qua cau if, chi bi chan o buoc ghi chung tu">
+        <defs>
+          <marker id="ar19" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        </defs>
+
+        <text x="112" y="14" font-size="10" font-family="monospace" fill="currentColor" letter-spacing="1">INSTANCE A</text>
+        <text x="368" y="14" font-size="10" font-family="monospace" fill="currentColor" letter-spacing="1">INSTANCE B</text>
+
+        <line x1="356" y1="20" x2="356" y2="252" stroke="currentColor" stroke-width="1" opacity=".25" stroke-dasharray="3 3"/>
+        <line x1="100" y1="20" x2="100" y2="252" stroke="currentColor" stroke-width="1" opacity=".25"/>
+
+        <line x1="46" y1="24" x2="46" y2="236" stroke="currentColor" stroke-width="1.2" opacity=".4" marker-end="url(#ar19)"/>
+        <text x="8" y="248" font-size="8.5" font-family="monospace" fill="currentColor" opacity=".6">thời gian</text>
+
+        <text x="0" y="40" font-size="9" font-family="monospace" fill="currentColor">ĐỌC</text>
+        <text x="0" y="51" font-size="9" font-family="monospace" fill="currentColor">trạng thái</text>
+        <rect x="106" y="28" width="240" height="30" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="116" y="47" font-size="9" font-family="monospace" fill="currentColor">→ PROCESSING</text>
+        <rect x="362" y="28" width="248" height="30" rx="4" fill="none" stroke="var(--bad)" stroke-width="1.4"/>
+        <text x="372" y="42" font-size="9" font-family="monospace" fill="var(--bad)">→ PROCESSING — VẪN THẾ</text>
+        <text x="372" y="53" font-size="8" font-family="monospace" fill="currentColor" opacity=".7">A chưa commit, B không thấy gì</text>
+
+        <text x="0" y="82" font-size="9" font-family="monospace" fill="currentColor">qua if ①</text>
+        <rect x="106" y="66" width="240" height="26" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="116" y="83" font-size="9" font-family="monospace" fill="currentColor">lọt</text>
+        <rect x="362" y="66" width="248" height="26" rx="4" fill="none" stroke="var(--bad)" stroke-width="1.4"/>
+        <text x="372" y="83" font-size="9" font-family="monospace" fill="var(--bad)">LỌT LUÔN — cái if thua sạch</text>
+
+        <text x="0" y="120" font-size="9" font-family="monospace" fill="currentColor">cộng ví</text>
+        <text x="0" y="131" font-size="9" font-family="monospace" fill="currentColor">trong tx</text>
+        <rect x="106" y="100" width="240" height="26" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="116" y="117" font-size="9" font-family="monospace" fill="currentColor">+500k</text>
+        <rect x="362" y="100" width="248" height="26" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <text x="372" y="117" font-size="9" font-family="monospace" fill="currentColor">+500k  ← vẫn chưa ai chặn</text>
+
+        <text x="0" y="158" font-size="9" font-family="monospace" fill="var(--accent)">GHI</text>
+        <text x="0" y="169" font-size="9" font-family="monospace" fill="var(--accent)">chứng từ</text>
+        <rect x="106" y="134" width="240" height="44" rx="4" fill="none" stroke="var(--ok)" stroke-width="1.5"/>
+        <text x="116" y="150" font-size="8.5" font-family="monospace" fill="var(--ok)">INSERT (TOPUP,PAYMENT,p1)</text>
+        <text x="116" y="162" font-size="8.5" font-family="monospace" fill="var(--ok)">OK</text>
+        <text x="116" y="173" font-size="8.5" font-family="monospace" fill="var(--ok)">COMMIT</text>
+        <rect x="362" y="134" width="248" height="44" rx="4" fill="none" stroke="var(--bad)" stroke-width="1.6"/>
+        <text x="372" y="150" font-size="8.5" font-family="monospace" fill="var(--bad)">INSERT (TOPUP,PAYMENT,p1)</text>
+        <text x="372" y="162" font-size="8.5" font-family="monospace" fill="var(--bad)">chờ A → rồi P2002 (trùng)</text>
+        <text x="372" y="173" font-size="8.5" font-family="monospace" fill="var(--bad)">ROLLBACK TOÀN BỘ</text>
+
+        <line x1="100" y1="188" x2="620" y2="188" stroke="currentColor" stroke-width="1" opacity=".2"/>
+
+        <text x="0" y="208" font-size="9" font-family="monospace" fill="currentColor">ví thực</text>
+        <text x="0" y="219" font-size="9" font-family="monospace" fill="currentColor">nhận</text>
+        <rect x="106" y="196" width="240" height="28" rx="4" fill="none" stroke="var(--ok)" stroke-width="1.4"/>
+        <text x="116" y="214" font-size="9.5" font-family="monospace" fill="var(--ok)">+500k</text>
+        <rect x="362" y="196" width="248" height="28" rx="4" fill="none" stroke="var(--ok)" stroke-width="1.4"/>
+        <text x="372" y="214" font-size="9.5" font-family="monospace" fill="var(--ok)">0đ — phần vừa cộng bị xoá theo</text>
+
+        <text x="0" y="248" font-size="9.5" font-family="monospace" fill="currentColor" opacity=".85">Cái if chỉ đứng ở hàng thứ hai. Thứ thật sự cứu tiền nằm ở hàng thứ tư — trong database.</text>
+      </svg>
+      <figcaption>Cả hai instance đều lọt qua mọi lớp kiểm tra viết bằng code. Chỉ có <strong>ràng buộc trong database</strong> mới chặn được.</figcaption>
+    </figure>
+
+    <h4>Vì sao cái <code>if</code> thua — hình dạng <em>check-then-act</em></h4>
+    <pre><code>const payment = await prisma.payment.findUnique(...)   // ĐỌC  ← lượt đi về thứ nhất
+if (payment.status !== PENDING ...) return             // QUYẾT
+await prisma.$transaction(...)                          // GHI  ← lượt đi về thứ hai</code></pre>
+    <p>Giữa lượt đọc và lượt ghi là <strong>hai chuyến đi về database riêng biệt</strong>. Cái <code>if</code>
+    đang phán xét dựa trên một sự thật <strong>đã thuộc về quá khứ</strong> — nó đúng lúc đọc, nhưng tới lúc ghi
+    thì thế giới đã khác.</p>
+    <div class="script">
+      <p><strong>Một điều kiện chỉ có hiệu lực nếu nó nằm trong cùng câu lệnh với hành động.</strong>
+      Tách ra làm hai lượt là mở ra một khe hở, và khe hở đó luôn đủ rộng.</p>
+    </div>
+    <p>Đây đúng là khuôn lỗi đã gặp ở câu <em>hai thợ cùng nhận đơn</em> và câu <em>giữ ghế 5 phút</em>. Ba
+    nghiệp vụ khác hẳn nhau, <strong>một khuôn lỗi duy nhất</strong>. Nhận ra được cái khuôn đó là thứ đáng giá
+    nhất trong cả nhóm câu này.</p>
+
+    <h4>Chốt chặn thật ở đâu — <strong>c</strong> đúng, <strong>b</strong> sai</h4>
+    <p>Comment trong code nói <em>"va chạm providerRef unique"</em>. Nhưng lần theo cho kỹ thì
+    <strong>không phải</strong>: cả A và B đều <code>update</code> <strong>cùng một dòng</strong>
+    <code>payment</code> (cùng <code>payment.id</code>), và đều ghi <strong>cùng một giá trị</strong>
+    <code>providerRef</code>. Đặt một dòng về đúng giá trị nó sắp có thì chỉ số unique chẳng thấy xung đột nào.</p>
+    <p><code>providerRef @unique</code> chỉ bắt được ca <em>hai dòng payment khác nhau</em> cùng nhận một mã giao
+    dịch VNPay — không phải ca này.</p>
+    <p>Thứ thật sự chặn nằm sâu hơn một tầng, ở bảng sổ cái:</p>
+    <pre><code>model JournalEntry {
+  kind    EntryKind
+  refType String?   // 'PAYMENT'
+  refId   String?   // payment.id
+
+  @@unique([kind, refType, refId])   // ← SỐ PHIẾU
+}</code></pre>
+    <p>Bộ ba <code>(TOPUP, 'PAYMENT', p1)</code> chính là <strong>phiếu số 47</strong>. VNPay không tự nghĩ ra nó,
+    nhưng ta suy ra được từ <code>paymentId</code> mà VNPay gửi kèm — và hai lần gọi thì <code>paymentId</code>
+    giống hệt nhau. <strong>Cái tên đã có sẵn, do bên ngoài cho.</strong></p>
+
+    <h4>Vì sao <code>tx</code> quan trọng — <strong>d</strong> đúng, nhưng không phải vì lý do dễ đoán</h4>
+    <p>Nhìn dòng này:</p>
+    <pre><code>await this.ledger.post({ ... }, tx);   // ← truyền tx: đi chung transaction với payment.update</code></pre>
+    <p>Phản xạ thường gặp là nghĩ <em>"bỏ tx đi thì ví cộng hai lần"</em>. <strong>Không đúng.</strong> Đọc kỹ
+    <code>ledger.post</code>:</p>
+    <pre><code>const run = (db) =&gt; this.doPost(input, db);
+return tx ? run(tx) : this.prisma.$transaction(run);   // không có tx thì nó TỰ mở transaction</code></pre>
+    <p>Mà <code>doPost</code> <strong>cộng số dư và ghi chứng từ trong cùng một <code>db</code></strong>. Nên dù
+    có <code>tx</code> hay không, hai việc đó vẫn rollback cùng nhau — P2002 nổ ra là phần cộng ví cũng bay theo.
+    Ví <strong>không</strong> bị cộng hai lần.</p>
+    <p>Nguy hiểm thật nằm ở chỗ khác, và tinh vi hơn nhiều:</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 226" role="img" aria-label="So sanh ranh gioi transaction: co tx thi cong vi va cap nhat payment cung song cung chet, khong co tx thi ledger commit rieng va de lai trang thai lech">
+        <defs>
+          <marker id="ar20" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--bad)"/></marker>
+        </defs>
+
+        <text x="0" y="12" font-size="10" font-family="monospace" fill="var(--ok)" letter-spacing="1">CÓ tx — một ranh giới</text>
+
+        <rect x="0" y="22" width="290" height="76" rx="6" fill="none" stroke="var(--ok)" stroke-width="1.8"/>
+        <text x="10" y="37" font-size="8.5" font-family="monospace" fill="var(--ok)">$transaction</text>
+        <rect x="12" y="44" width="128" height="44" rx="4" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <text x="20" y="59" font-size="8" font-family="monospace" fill="currentColor">ledger.post(tx)</text>
+        <text x="20" y="70" font-size="8" font-family="monospace" fill="currentColor">cộng ví +500k</text>
+        <text x="20" y="81" font-size="8" font-family="monospace" fill="currentColor">ghi chứng từ</text>
+        <rect x="150" y="44" width="128" height="44" rx="4" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <text x="158" y="59" font-size="8" font-family="monospace" fill="currentColor">payment.update</text>
+        <text x="158" y="70" font-size="8" font-family="monospace" fill="currentColor">SUCCEEDED</text>
+        <text x="158" y="81" font-size="8" font-family="monospace" fill="currentColor">providerRef</text>
+
+        <text x="0" y="116" font-size="8.5" font-family="monospace" fill="var(--ok)">hỏng ở BẤT KỲ đâu → rollback sạch cả hai</text>
+        <text x="0" y="129" font-size="8.5" font-family="monospace" fill="var(--ok)">ví và payment luôn kể CÙNG một câu chuyện</text>
+
+        <line x1="308" y1="22" x2="308" y2="200" stroke="currentColor" stroke-width="1" opacity=".2"/>
+
+        <text x="330" y="12" font-size="10" font-family="monospace" fill="var(--bad)" letter-spacing="1">BỎ tx — hai ranh giới</text>
+
+        <rect x="330" y="22" width="132" height="76" rx="6" fill="none" stroke="var(--bad)" stroke-width="1.6"/>
+        <text x="338" y="37" font-size="8.5" font-family="monospace" fill="var(--bad)">tx riêng của ledger</text>
+        <text x="338" y="54" font-size="8" font-family="monospace" fill="currentColor">cộng ví +500k</text>
+        <text x="338" y="65" font-size="8" font-family="monospace" fill="currentColor">ghi chứng từ</text>
+        <text x="338" y="82" font-size="8.5" font-family="monospace" fill="var(--bad)">COMMIT ngay</text>
+
+        <rect x="478" y="22" width="132" height="76" rx="6" fill="none" stroke="var(--bad)" stroke-width="1.6"/>
+        <text x="486" y="37" font-size="8.5" font-family="monospace" fill="var(--bad)">tx ngoài</text>
+        <text x="486" y="54" font-size="8" font-family="monospace" fill="currentColor">payment.update</text>
+        <text x="486" y="71" font-size="8.5" font-family="monospace" fill="var(--bad)">hỏng → ROLLBACK</text>
+        <text x="486" y="86" font-size="8" font-family="monospace" fill="currentColor" opacity=".7">timeout, mất kết nối…</text>
+
+        <line x1="462" y1="60" x2="476" y2="60" stroke="var(--bad)" stroke-width="1.2" marker-end="url(#ar20)"/>
+
+        <rect x="330" y="108" width="280" height="42" rx="5" fill="none" stroke="var(--bad)" stroke-width="1.5"/>
+        <text x="340" y="124" font-size="9" font-family="monospace" fill="var(--bad)">VÍ ĐÃ CÓ TIỀN — payment vẫn PROCESSING</text>
+        <text x="340" y="139" font-size="8.5" font-family="monospace" fill="currentColor">hai bản ghi kể hai câu chuyện khác nhau</text>
+
+        <text x="0" y="172" font-size="9.5" font-family="monospace" fill="currentColor" opacity=".85">Không phải cộng hai lần. Tệ hơn: cộng ĐÚNG một lần nhưng không ai ghi nhận là đã cộng.</text>
+        <text x="0" y="190" font-size="9.5" font-family="monospace" fill="currentColor" opacity=".85">IPN gọi lại sẽ thấy PROCESSING, lọt qua if, rồi kẹt vĩnh viễn ở P2002.</text>
+        <text x="0" y="214" font-size="9.5" font-family="monospace" fill="var(--accent)">Một tham số. Không có test cho ca song song thì tới cuối tháng đối soát mới lộ.</text>
+      </svg>
+      <figcaption><code>tx</code> không phải để viết cho gọn — nó là thứ <strong>định nghĩa ranh giới cùng sống cùng chết</strong>.</figcaption>
+    </figure>
+
+    <h4>Vậy cái <code>if</code> ở ① có thừa không? — <strong>a</strong> đúng</h4>
+    <p>Không thừa. Nhưng vai trò của nó <strong>không phải cái người ta tưởng</strong>:</p>
+    <div class="tbl-wrap"><table>
+      <tr><th>Chốt</th><th>Bắt ca nào</th><th>Giá phải trả</th><th>Vai trò thật</th></tr>
+      <tr><td><code>if (status !== PENDING)</code></td><td>Gọi lại <strong>sau khi</strong> lần trước xong — khoảng 99.9%</td><td>Một lượt <code>SELECT</code></td><td><strong>Đường nhanh.</strong> Trả lời gọn, không đụng sổ cái</td></tr>
+      <tr><td><code>@@unique(kind, refType, refId)</code></td><td>Gọi <strong>chồng lên nhau</strong> — hiếm nhưng có thật</td><td>Một transaction bị rollback</td><td><strong>Tính đúng đắn.</strong> Không bao giờ hụt</td></tr>
+    </table></div>
+    <div class="script">
+      <p><strong>Một lớp cho nhanh, một lớp cho đúng.</strong> Lớp nhanh xử lý phần lớn lưu lượng một cách rẻ tiền
+      và <em>có thể sai</em>; lớp đúng hiếm khi phải làm việc nhưng <em>không bao giờ được sai</em>.</p>
+      <p>Đừng nhầm lớp nhanh là lớp bảo vệ — đó chính là cách người ta bỏ ràng buộc unique đi vì "code đã kiểm rồi mà".</p>
+    </div>
+
+    <h4>Một lỗi thật trong đoạn code này</h4>
+    <p>Tiền thì an toàn, nhưng <strong>câu trả lời gửi về VNPay lại sai</strong>. Lần theo <em>kiểu dữ liệu</em> của
+    exception:</p>
+    <pre><code>// ledger.service.ts — bắt P2002 rồi ĐỔI SANG loại khác
+if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
+  throw new ConflictException({ code: 'ENTRY_DUPLICATE' });
+
+// payments.service.ts — nhưng lại chỉ rình đúng loại vừa bị đổi đi
+catch (e) {
+  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
+    return ACK.already;
+  throw e;          // ← ConflictException rơi vào đây
+}</code></pre>
+    <p><code>ledger.post</code> đã <strong>gói</strong> P2002 thành <code>ConflictException</code> trước khi ném lên.
+    Cái <code>catch</code> ở <code>handleIpn</code> kiểm <code>instanceof PrismaClientKnownRequestError</code> →
+    <strong>không khớp</strong> → ném tiếp.</p>
+    <p>Hậu quả: VNPay đáng lẽ nhận <code>{RspCode:&nbsp;'02'}</code> (<em>"đã xử lý rồi, thôi đi"</em>) thì lại nhận
+    HTTP 409 kèm <code>{code:&nbsp;'ENTRY_DUPLICATE'}</code> — thứ nó không hiểu. Nó coi như thất bại và
+    <strong>gọi lại</strong>.</p>
+    <div class="flag"><p>Lần gọi lại đó xảy ra sau, tuần tự, nên <code>if</code> ① bắt được và trả
+    <code>ACK.already</code> đúng chuẩn — hệ thống <strong>tự lành</strong>. Cái giá là một lần 500 trong log, một
+    lần gọi lại thừa, và một cảnh báo giả làm người trực đêm mất ngủ. Sửa thì một dòng: bắt thêm
+    <code>ENTRY_DUPLICATE</code> và cũng trả <code>ACK.already</code>.</p></div>
+
+    <h4>Tình huống (2) — hai lần bấm nút, và vì sao nó là bài toán KHÁC</h4>
+    <pre><code>const payment = await prisma.payment.create({ data: { userId, amount, status: PROCESSING } });</code></pre>
+    <p>Không <code>where</code>, không điều kiện, không có gì để va chạm. <code>create</code> là lệnh
+    <strong>luôn thành công</strong>. Hai lần bấm cho ra:</p>
+    <pre><code>payments:  p1  user=u9  amount=500000  PROCESSING   → link VNPay #1
+           p2  user=u9  amount=500000  PROCESSING   → link VNPay #2</code></pre>
+    <p>Lần lượt từng chốt — <strong>e</strong> đúng vì cả ba đều vô dụng:</p>
+    <div class="tbl-wrap"><table>
+      <tr><th>Chốt ở tình huống (1)</th><th>Vì sao vô dụng ở tình huống (2)</th></tr>
+      <tr><td><code>if (status !== PENDING)</code></td><td>Mỗi dòng có trạng thái riêng, không dòng nào biết dòng kia tồn tại</td></tr>
+      <tr><td><code>providerRef @unique</code></td><td>Trả tiền hai link thì VNPay tạo <strong>hai giao dịch thật</strong>, hai mã khác nhau — cả hai đều unique một cách chính đáng</td></tr>
+      <tr><td><code>@@unique(kind, refType, refId)</code></td><td><code>refId</code> là <code>payment.id</code>, mà p1 ≠ p2 → hai chứng từ hợp lệ</td></tr>
+    </table></div>
+    <p>Ví có <strong>1.000.000đ</strong>.</p>
+
+    <h4>Và đây là chỗ lật ngược vấn đề</h4>
+    <p>Số tiền đó <strong>sai hay đúng</strong>?</p>
+    <p>Về mặt hệ thống thì <strong>không có gì sai cả</strong>. Ngân hàng đã trừ tài khoản người dùng hai lần
+    <em>thật</em>. Sổ cái cân bằng, tổng số dư vẫn bằng 0, đối soát với sao kê VNPay khớp từng đồng. Không dữ liệu
+    nào hỏng, không bất biến nào vỡ.</p>
+    <p>Cái sai duy nhất là <strong>người dùng không định làm thế</strong>. Mà ý định thì không nằm trong dữ liệu.</p>
+    <p>Đặt hai request cạnh nhau, byte cho byte:</p>
+    <pre><code>POST /payments                          POST /payments
+Authorization: Bearer &lt;u9&gt;               Authorization: Bearer &lt;u9&gt;
+{ "type": "WALLET_TOPUP",               { "type": "WALLET_TOPUP",
+  "amount": 500000 }                      "amount": 500000 }</code></pre>
+    <p>Giống hệt. Và <strong>hai kịch bản sau cũng sinh ra đúng hai request đó</strong>:</p>
+    <ul>
+      <li>Bấm hai lần vì trang lag → muốn <strong>một</strong> lần nạp</li>
+      <li>Nạp 500k, xong nhớ ra cần thêm, nạp tiếp 500k → muốn <strong>hai</strong> lần nạp</li>
+    </ul>
+    <div class="script">
+      <p><strong>Không thuật toán nào phân biệt được hai kịch bản này, vì thông tin phân biệt chúng không hề có
+      trong request.</strong></p>
+      <p>Đây không phải hạn chế kỹ thuật cần khắc phục — đây là một sự thật về mặt <em>thông tin</em>.</p>
+    </div>
+
+    <h4>Vì sao <strong>f</strong> sai — mọi mẹo đoán ở server đều chặn oan</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th>Mẹo</th><th>Chặn oan ai</th></tr>
+      <tr><td>Chặn nếu user còn payment <code>PROCESSING</code></td><td>Người bỏ dở lần nạp lúc sáng — giờ không nạp được nữa</td></tr>
+      <tr><td>Chặn nếu trùng số tiền trong 30 giây</td><td>Người muốn nạp 500k hai lần thật. Mà 30 giây là con số ở đâu ra? Ai chọn?</td></tr>
+      <tr><td>Khoá nút ở FE sau khi bấm</td><td>Giúp nhiều về trải nghiệm, nhưng <strong>không phải giải pháp</strong>: không cứu được ca F5 rồi bấm lại, cũng không cứu được ca request đầu timeout ở tầng mạng và thư viện HTTP <strong>tự gửi lại</strong></td></tr>
+    </table></div>
+    <div class="flag"><p>Ca cuối cùng mới là ca nguy hiểm nhất, vì nó xảy ra <strong>không ai nhìn thấy</strong>.
+    Người dùng bấm đúng một lần, tin rằng mình bấm một lần, và vẫn bị trừ tiền hai lần.</p></div>
+
+    <h4>Lời giải: bắt khách ghi số phiếu — <strong>g</strong> đúng</h4>
+    <p>Nếu server không thể biết, thì client phải <strong>nói ra</strong>:</p>
+    <pre><code>POST /payments
+Idempotency-Key: 8f3c1a9e-4b22-4d7e-9c10-5a6b7c8d9e0f
+{ "type": "WALLET_TOPUP", "amount": 500000 }</code></pre>
+    <p>Luật đặt khoá — và luật này là <strong>toàn bộ ý nghĩa</strong> của cơ chế, sai chỗ này là hỏng tất:</p>
+    <div class="script">
+      <p><strong>Sinh khoá một lần cho mỗi Ý ĐỊNH, không phải mỗi request.</strong></p>
+    </div>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 216" role="img" aria-label="Sinh khoa mot lan cho moi y dinh thi ba lan goi van la mot lan nap, sinh khoa moi lan goi thi thanh ba lan nap">
+        <defs>
+          <marker id="ar21" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        </defs>
+
+        <text x="0" y="12" font-size="10" font-family="monospace" fill="var(--ok)" letter-spacing="1">ĐÚNG — một khoá cho mỗi Ý ĐỊNH</text>
+
+        <rect x="0" y="22" width="124" height="30" rx="5" fill="none" stroke="var(--ok)" stroke-width="1.5"/>
+        <text x="8" y="36" font-size="8.5" font-family="monospace" fill="var(--ok)">mở màn hình nạp</text>
+        <text x="8" y="47" font-size="8.5" font-family="monospace" fill="var(--accent)">sinh K1 — một lần</text>
+
+        <line x1="124" y1="37" x2="144" y2="37" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar21)"/>
+
+        <rect x="150" y="22" width="100" height="30" rx="4" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <text x="158" y="36" font-size="8" font-family="monospace" fill="currentColor">bấm lần 1</text>
+        <text x="158" y="47" font-size="8.5" font-family="monospace" fill="var(--accent)">gửi K1</text>
+
+        <rect x="256" y="22" width="100" height="30" rx="4" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <text x="264" y="36" font-size="8" font-family="monospace" fill="currentColor">bấm lần 2</text>
+        <text x="264" y="47" font-size="8.5" font-family="monospace" fill="var(--accent)">gửi K1</text>
+
+        <rect x="362" y="22" width="112" height="30" rx="4" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <text x="370" y="36" font-size="8" font-family="monospace" fill="currentColor">HTTP tự gửi lại</text>
+        <text x="370" y="47" font-size="8.5" font-family="monospace" fill="var(--accent)">gửi K1</text>
+
+        <line x1="474" y1="37" x2="494" y2="37" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar21)"/>
+
+        <rect x="500" y="22" width="120" height="30" rx="5" fill="none" stroke="var(--ok)" stroke-width="1.6"/>
+        <text x="508" y="36" font-size="8.5" font-family="monospace" fill="var(--ok)">server: 1 ý định</text>
+        <text x="508" y="47" font-size="9" font-family="monospace" fill="var(--ok)">→ nạp 500k</text>
+
+        <line x1="0" y1="72" x2="620" y2="72" stroke="currentColor" stroke-width="1" opacity=".2"/>
+
+        <text x="0" y="94" font-size="10" font-family="monospace" fill="var(--bad)" letter-spacing="1">SAI — sinh khoá ngay trước mỗi axios.post</text>
+
+        <rect x="0" y="104" width="124" height="30" rx="5" fill="none" stroke="var(--bad)" stroke-width="1.5"/>
+        <text x="8" y="118" font-size="8.5" font-family="monospace" fill="var(--bad)">mở màn hình nạp</text>
+        <text x="8" y="129" font-size="8.5" font-family="monospace" fill="currentColor" opacity=".7">chưa sinh gì</text>
+
+        <line x1="124" y1="119" x2="144" y2="119" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar21)"/>
+
+        <rect x="150" y="104" width="100" height="30" rx="4" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <text x="158" y="118" font-size="8" font-family="monospace" fill="currentColor">bấm lần 1</text>
+        <text x="158" y="129" font-size="8.5" font-family="monospace" fill="var(--bad)">sinh K1</text>
+
+        <rect x="256" y="104" width="100" height="30" rx="4" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <text x="264" y="118" font-size="8" font-family="monospace" fill="currentColor">bấm lần 2</text>
+        <text x="264" y="129" font-size="8.5" font-family="monospace" fill="var(--bad)">sinh K2</text>
+
+        <rect x="362" y="104" width="112" height="30" rx="4" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <text x="370" y="118" font-size="8" font-family="monospace" fill="currentColor">HTTP tự gửi lại</text>
+        <text x="370" y="129" font-size="8.5" font-family="monospace" fill="var(--bad)">sinh K3</text>
+
+        <line x1="474" y1="119" x2="494" y2="119" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar21)"/>
+
+        <rect x="500" y="104" width="120" height="30" rx="5" fill="none" stroke="var(--bad)" stroke-width="1.6"/>
+        <text x="508" y="118" font-size="8.5" font-family="monospace" fill="var(--bad)">server: 3 ý định</text>
+        <text x="508" y="129" font-size="9" font-family="monospace" fill="var(--bad)">→ nạp 1.5tr</text>
+
+        <text x="0" y="166" font-size="9.5" font-family="monospace" fill="currentColor" opacity=".85">Cùng một header, cùng một bảng, cùng một ràng buộc unique — chỉ khác CHỖ gọi hàm sinh khoá.</text>
+        <text x="0" y="184" font-size="9.5" font-family="monospace" fill="currentColor" opacity=".85">Bản dưới có đủ mọi thứ của idempotency, trừ tác dụng.</text>
+        <text x="0" y="206" font-size="9.5" font-family="monospace" fill="var(--accent)">Nạp xong, muốn nạp tiếp thật? Sinh khoá MỚI — vì đó là một ý định mới.</text>
+      </svg>
+      <figcaption>Cơ chế nằm ở <strong>chỗ sinh khoá</strong>, không nằm ở cái header. Đây là lỗi phổ biến nhất khi triển khai idempotency.</figcaption>
+    </figure>
+
+    <h4>Phía server làm gì</h4>
+    <pre><code>model IdempotencyKey {
+  key       String   @map("idem_key")
+  userId    String   @map("user_id")
+  endpoint  String
+  reqHash   String   @map("req_hash")    // hash của body
+  status    String                        // IN_PROGRESS | DONE
+  response  Json?                         // câu trả lời đã trả lần đầu
+  createdAt DateTime @default(now())
+
+  @@unique([userId, endpoint, key])       // ← LẠI LÀ MỘT CÁI UNIQUE
+}</code></pre>
+    <p>Bốn chi tiết, mỗi cái có một lý do đắt giá:</p>
+    <div class="tbl-wrap"><table>
+      <tr><th>Chi tiết</th><th>Vì sao</th><th>Bỏ đi thì sao</th></tr>
+      <tr><td>Khoá gắn với <code>userId</code></td><td>Khoá do client tự đặt → phải coi là <strong>dữ liệu người lạ gửi tới</strong></td><td>A đoán trúng khoá của B là <strong>đọc được câu trả lời của B</strong> — trong đó có <code>paymentId</code> và số tiền</td></tr>
+      <tr><td>Lưu cả <code>response</code></td><td>Lần bấm thứ hai vẫn cần đúng <code>paymentUrl</code> của lần một để đi tiếp</td><td>Trả "đã xử lý rồi" mà không kèm dữ liệu → người dùng vẫn kẹt, sẽ bấm lần ba</td></tr>
+      <tr><td>Có <code>reqHash</code></td><td>Cùng khoá mà body khác — 500k rồi 900k — nghĩa là <strong>client đang có bug</strong></td><td>Âm thầm trả kết quả cũ → biến một bug lộ liễu thành một bug ẩn</td></tr>
+      <tr><td>Có TTL (xoá sau 24h)</td><td>Không ai cần nhớ ý định của tháng trước</td><td>Bảng lớn vô hạn</td></tr>
+    </table></div>
+
+    <h4>Và đây là chỗ hay nhất: vấn đề tự lặp lại — vì sao <strong>h</strong> sai</h4>
+    <p>Hai request mang <strong>cùng một khoá</strong> bay tới cùng lúc thì sao?</p>
+    <p>Viết kiểu <em>"tra bảng xem khoá có chưa, chưa có thì xử lý"</em> là bạn vừa <strong>viết lại đúng cái lỗi
+    check-then-act của tình huống (1)</strong>, chỉ đổi tên biến. Đọc rồi ghi, hai lượt đi về, khe hở y nguyên.</p>
+    <p>Cách đúng là để chính cái <code>INSERT</code> làm luôn việc kiểm tra:</p>
+    <pre><code>try {
+  await tx.idempotencyKey.create({ data: { userId, endpoint, key, reqHash, status: 'IN_PROGRESS' } });
+} catch (e) {
+  if (e.code === 'P2002') {
+    // Có người tới trước. KHÔNG xử lý lại — đọc kết quả của họ mà trả về.
+    const prev = await tx.idempotencyKey.findUnique({ where: { userId_endpoint_key: { ... } } });
+    if (prev.status === 'IN_PROGRESS') return 409;   // họ đang làm, bảo client thử lại chút nữa
+    if (prev.reqHash !== reqHash)      return 422;   // cùng khoá, khác nội dung → client có bug
+    return prev.response;                            // trả y hệt câu trả lời lần đầu
+  }
+  throw e;
+}</code></pre>
+    <div class="script">
+      <p><strong>Ghi trước, hỏi sau.</strong> Cái <code>INSERT</code> vừa là hành động vừa là câu hỏi, nên không có
+      khe hở nào ở giữa cho ai chen vào — đúng cái ý đã cứu tình huống (1).</p>
+    </div>
+
+    <h4>Ba tầng chống trùng — và điểm chung của chúng</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th>Tầng</th><th>Ai đặt tên cho công việc?</th><th>Trong dự án này</th></tr>
+      <tr><td><strong>Trạng thái</strong> — <code>if status !== PENDING</code></td><td>Không ai. Suy ra từ dữ liệu sẵn có</td><td><code>handleIpn</code> ① — đường nhanh</td></tr>
+      <tr><td><strong>Unique trên khoá nghiệp vụ</strong></td><td><strong>Bên ngoài</strong> đặt — cổng cho ta <code>paymentId</code></td><td><code>@@unique(kind, refType, refId)</code> — chốt thật</td></tr>
+      <tr><td><strong>Idempotency key</strong></td><td><strong>Client</strong> tự đặt, vì không ai khác biết ý định</td><td>Chưa có — đây là chỗ dự án còn thiếu</td></tr>
+    </table></div>
+    <div class="script">
+      <p><strong>Cả ba tầng đều là cùng một thứ: một cái tên, và một ràng buộc <code>UNIQUE</code> trong database
+      canh cái tên đó.</strong></p>
+      <p>Chúng chỉ khác nhau ở chỗ <strong>cái tên từ đâu ra</strong>. Có sẵn thì dùng. Không có thì phải bắt ai đó
+      đặt. Và người duy nhất đặt được là người biết ý định — tức là client.</p>
+    </div>
+    <div class="flag"><p>Hệ quả trực tiếp: <strong>không có idempotency nào mà không tựa vào một điểm chốt duy
+    nhất, có tính nguyên tử, ở đâu đó.</strong> Ai bảo chống trùng được bằng cách kiểm tra trong code ứng dụng thì
+    hoặc là chưa gặp ca song song, hoặc là đã gặp mà chưa biết.</p></div>
+
+    <h4>Vì sao cả thế giới phải sống chung với chuyện này</h4>
+    <p>Nền dưới cùng của cả bài là một định lý buồn của hệ phân tán: <strong>không thể có "gửi đúng một lần"</strong>.
+    Bên gửi không bao giờ biết chắc bên nhận đã nhận chưa — gói tin xác nhận cũng có thể mất trên đường về. Nên mọi
+    hệ thống thực dụng đều chọn <strong>at-least-once</strong>: thà gửi thừa còn hơn để mất.</p>
+    <p>Gánh nặng vì thế <strong>chuyển sang bên nhận</strong>:</p>
+    <pre><code>  at-least-once   (bên gửi cố hết sức)
++ idempotent      (bên nhận chịu được trùng)
+─────────────────────────────────────────
+= effectively-once  (hiệu quả như đúng một lần)</code></pre>
+    <p>Không chỉ cổng thanh toán. Kafka, SQS, webhook của Stripe, retry của mọi HTTP client —
+    <strong>tất cả đều at-least-once</strong>. Nên "chịu được gọi trùng" không phải tính năng thêm vào cho chắc;
+    nó là <strong>điều kiện tối thiểu để một API được coi là dùng được ngoài đời</strong>.</p>
+
+    <h4>Câu chốt khi phỏng vấn</h4>
+    <div class="script">
+      <p>"Có hai bài toán trùng lặp khác hẳn nhau, và trộn chúng vào nhau là hỏng.</p>
+      <p><strong>Thứ nhất là cổng gọi webhook nhiều lần</strong> — chuyện bình thường, vì mọi cổng đều
+      at-least-once. Ở đây tôi <em>có sẵn</em> một định danh từ bên ngoài là <code>paymentId</code>, nên chốt chặn
+      là ràng buộc <code>UNIQUE(kind, refType, refId)</code> trên bảng chứng từ. Cái <code>if</code> kiểm trạng thái
+      ở đầu hàm chỉ là đường nhanh cho ca gọi lại tuần tự — nó <strong>không</strong> chống được ca song song, vì
+      đọc và ghi là hai lượt đi về database, ở giữa có khe hở. Điều kiện chỉ có hiệu lực khi nằm trong cùng câu lệnh
+      với hành động. Và phần cộng ví với phần cập nhật trạng thái phải nằm trong <strong>cùng một
+      transaction</strong>, nếu không sẽ có lúc ví đã có tiền mà payment vẫn PROCESSING.</p>
+      <p><strong>Thứ hai là người dùng bấm nút hai lần</strong> — bài toán khác hẳn, vì hai request giống nhau từng
+      byte, và server <strong>không có thông tin</strong> để biết đó là bấm nhầm hay hai lần nạp thật. Mọi mẹo đoán
+      ở server — chặn theo số tiền, theo thời gian — đều sẽ chặn oan người dùng thật. Cách duy nhất đúng là để client
+      gửi <code>Idempotency-Key</code>, sinh <strong>một lần cho mỗi ý định</strong> chứ không phải mỗi request.
+      Server lưu khoá kèm cả câu trả lời đã trả, khoá phải gắn với <code>userId</code> để không rò dữ liệu giữa hai
+      tài khoản, và bản thân việc ghi khoá cũng phải làm bằng <code>INSERT</code> rồi bắt lỗi trùng — chứ tra trước
+      ghi sau thì lại rơi vào đúng cái khe hở ban đầu.</p>
+      <p>Nói gọn thì cả hai đều quy về một chuyện: <strong>có một cái tên cho công việc, và một ràng buộc
+      <code>UNIQUE</code> canh cái tên đó.</strong> Khác nhau chỉ ở chỗ cái tên do bên ngoài cho, hay phải bắt client
+      đặt."</p>
+    </div>
+  `,
+  followups: [
+    { q: '<code>GET</code> và <code>DELETE</code> vốn đã idempotent theo định nghĩa HTTP — vậy sao gọi <code>DELETE</code> hai lần vẫn có thể gây rắc rối?',
+      a: '<p>Vì định nghĩa của HTTP nói về <strong>trạng thái server sau khi gọi</strong>, chứ không nói về <strong>câu trả lời</strong>. Xoá hai lần thì tài nguyên vẫn mất đúng một lần — đúng như HTTP hứa. Nhưng lần một trả <code>204</code>, lần hai trả <code>404</code>. Client thấy <code>404</code> có thể hiểu nhầm là "xoá thất bại" rồi hiện báo lỗi cho người dùng, dù thực ra mọi thứ đúng ý.</p><p>Ba chỗ đau hơn nữa:</p><ul><li><strong>Có phản ứng phụ.</strong> <code>DELETE /orders/5</code> mà kèm hoàn tiền và gửi email — thì phần hoàn tiền, gửi email đó <strong>không</strong> idempotent chút nào. HTTP không hứa gì về phản ứng phụ.</li><li><strong>Xoá rồi tạo lại.</strong> <code>DELETE /items/5</code> hai lần, nhưng giữa hai lần có người tạo lại <code>items/5</code> — lần xoá thứ hai giết nhầm bản ghi mới. Đây là ca <strong>ABA</strong>, và nó cần phiên bản (<code>If-Match</code>/<code>ETag</code>) chứ không cần idempotency key.</li><li><strong><code>GET</code> cũng không luôn an toàn</strong> nếu nó ghi log, tăng bộ đếm lượt xem, hay tệ hơn là có ai đó nhét thao tác đổi dữ liệu vào <code>GET</code> — mà nếu thế thì bạn còn dính CSRF nữa, vì <code>SameSite=Lax</code> vẫn cho <code>GET</code> điều hướng đi qua.</li></ul><p>Kết luận: <strong>"idempotent" trong RFC là lời hứa về ngữ nghĩa, không phải bảo đảm về hiện thực.</strong> Method đúng không làm cho code đúng.</p>' },
+    { q: 'Nếu request đầu chết giữa chừng — ghi khoá <code>IN_PROGRESS</code> xong rồi server sập — thì khoá kẹt vĩnh viễn à?',
+      a: '<p>Đúng, nếu không làm gì thì kẹt. Và người dùng sẽ nhận <code>409</code> mãi mãi, không nạp được tiền. Ba cách xử lý, xếp theo độ chỉn chu:</p><ul><li><strong>Hạn cho trạng thái <code>IN_PROGRESS</code>.</strong> Lưu thêm <code>lockedUntil</code>; ai tới sau mà thấy đã quá hạn thì <strong>được phép giành lấy</strong> và làm lại. Đây đúng là ý <em>"biến cái khoá thành dữ liệu có hạn dùng"</em> ở câu giữ ghế 5 phút — cùng một lời giải, khác nghiệp vụ.</li><li><strong>Ghi khoá trong cùng transaction với công việc.</strong> Server sập thì transaction rollback, khoá cũng biến mất, coi như chưa từng có. Sạch nhất — nhưng chỉ làm được khi công việc nằm gọn trong một database. Gọi sang cổng thanh toán bên ngoài thì không nằm chung transaction được.</li><li><strong>Chấp nhận và dọn bằng job.</strong> Đơn giản, nhưng có khoảng thời gian người dùng bị kẹt.</li></ul><p>Chi tiết tinh tế nhất: nếu cho phép giành lại thì <strong>công việc bên dưới phải tự nó chịu được làm lại</strong>. Với ca nạp ví thì được, vì <code>createPayment</code> chỉ tạo dòng PENDING và dựng URL, chưa có tiền nào chuyển. Với công việc đã gọi ra ngoài rồi thì phải <strong>hỏi lại cổng</strong> xem giao dịch đó đã tồn tại chưa, chứ không được cắm đầu tạo cái mới.</p>' },
+    { q: 'Ca ngược lại — người dùng bấm "Hoàn tiền" hai lần. Vì sao khó hơn ca nạp tiền?',
+      a: '<p>Vì <strong>nạp tiền có định danh từ bên ngoài, hoàn tiền thì không</strong>.</p><p>Nạp tiền: cổng cho ta <code>paymentId</code>, và mọi lời gọi trùng đều mang cùng mã đó. Ta có sẵn số phiếu.</p><p>Hoàn tiền: hai lệnh hoàn 200k trên cùng một đơn 500k là <strong>hoàn toàn hợp lệ</strong> — hoàn một phần hai lần là chuyện có thật. Nên không thể lấy <code>orderId</code> làm khoá chống trùng, vì như vậy là cấm luôn nghiệp vụ hợp lệ.</p><p>Ba tầng phải dựng đủ:</p><ul><li><strong>Idempotency key</strong> để phân biệt "bấm nhầm hai lần" với "hoàn hai đợt thật" — lại đúng câu chuyện ý định.</li><li><strong>Bất biến trên tổng</strong>: <code>tổng đã hoàn + lần này &lt;= tổng đã thu</code>, và điều kiện đó phải nằm <strong>trong chính câu <code>UPDATE</code></strong> chứ không phải kiểm bằng <code>if</code> ở tầng code — nếu không thì hai lệnh hoàn song song sẽ cùng lọt và hoàn vượt.</li><li><strong>Đối chiếu với cổng</strong>, vì cổng cũng có quy tắc riêng và có thể từ chối.</li></ul><p>Nói cách khác: nạp tiền chỉ cần chống trùng, còn hoàn tiền phải chống trùng <strong>và</strong> giữ một bất biến về tổng. Hai chuyện khác nhau, và người ta hay chỉ làm chuyện thứ nhất.</p>' },
+    { q: 'Có bao giờ KHÔNG nên làm idempotent không?',
+      a: '<p>Có, và nhận ra được ranh giới này là dấu hiệu của người đã cân nhắc thật chứ không áp dụng máy móc.</p><ul><li><strong>Thao tác vốn đã cộng dồn theo đúng ý người dùng.</strong> Nút "thêm 1 vào giỏ hàng" — bấm hai lần thì <em>nên</em> ra hai món. Gắn idempotency key vào đây là làm hỏng tính năng.</li><li><strong>Ghi log, gửi sự kiện phân tích.</strong> Trùng vài bản ghi không ai chết, mà chi phí chống trùng thì phải trả trên từng sự kiện — số lượng lớn hơn nghiệp vụ hàng nghìn lần.</li><li><strong>Thao tác thật sự là gán chứ không phải cộng.</strong> <code>PUT /profile { name: "An" }</code> vốn đã idempotent theo bản chất — ghi đè bao nhiêu lần cũng ra một kết quả. Thêm khoá vào là thừa.</li></ul><p>Quy tắc gọn: <strong>chỉ cần idempotency cho thao tác vừa có phản ứng phụ không đảo ngược được, vừa mang tính cộng dồn.</strong> Tiền bạc, gửi mail, tạo đơn, gọi ra hệ thống ngoài. Còn thao tác gán thì bản chất đã an toàn, và thao tác cộng dồn có chủ đích thì đừng đụng vào.</p>' },
+  ],
+},
 /* ---------------------------------------------------------- FS */
 {
   id: 'fs-01',
@@ -3770,7 +4267,7 @@ async function ensureFreshToken() {
 
 const LS = 'lo-luyen-v1';
 const $ = (s) => document.querySelector(s);
-const LETTER = 'ABCDEF';
+const LETTER = 'ABCDEFGH';
 const LEVELS = ['dễ', 'trung bình', 'khó'];
 const STATUS = [
   ['all', 'Tất cả'], ['todo', 'Chưa làm'], ['bad', 'Từng sai'], ['ok', 'Đã đúng'],
