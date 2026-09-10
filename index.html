@@ -2387,6 +2387,330 @@ async function onSubmit() {
   ],
 },
 
+{
+  id: 'fe-16',
+  section: 'fe',
+  topic: 'Hiệu năng FE',
+  level: 'khó',
+  multi: true,
+  q: 'Build thật của <code>marketplace-fe</code>: <code>vendor</code> <strong>715 KB</strong> · <code>index</code> <strong>323 KB</strong> · <code>map</code> (Leaflet) <strong>162 KB</strong> — <strong>1.172 KB JS tải ngay ở lần vào đầu tiên</strong>. Chunk <code>map</code> đã được tách riêng, vậy mà mở màn <strong>đăng nhập</strong> trình duyệt vẫn tải đủ 162 KB Leaflet. Khắp <code>src/</code> không có một <code>import()</code> động nào, cũng không có <code>Suspense</code> nào. Nhận định nào <strong>đúng</strong>?',
+  code: `// ① vite.config.ts
+build: {
+  chunkSizeWarningLimit: 700,        // comment: "vendor gộp ~640KB là chấp nhận được"
+  rollupOptions: { output: {
+    // comment: "Leaflet tách chunk 'map' riêng ĐỂ VENDOR KHÔNG VƯỢT NGƯỠNG CẢNH BÁO"
+    manualChunks(id) {
+      if (id.includes('node_modules')) {
+        if (id.includes('leaflet') || id.includes('@twaozann01/map')) return 'map';
+        return 'vendor';
+      }
+    },
+  }},
+}
+
+// ② dist/index.html — do Vite sinh ra
+&lt;script type="module" src="/assets/index-cKlZXe6e.js"&gt;&lt;/script&gt;
+&lt;link rel="modulepreload" href="/assets/vendor-BeEntYoa.js"&gt;
+&lt;link rel="modulepreload" href="/assets/map-tgYxeiPD.js"&gt;
+&lt;link rel="stylesheet"    href="/assets/map-Dgihpmma.css"&gt;
+
+// ③ src/routes/index.tsx — 24 feature, import TĨNH toàn bộ
+import { addressRoutes } from '@/features/address';
+// ... 23 dòng nữa
+children: [ ...adminRoutes, ...addressRoutes, ...orderRoutes, /* ... */ ]
+
+// ④ src/features/address/address.routes.tsx
+import { AddressesPage } from './pages/addresses.page';
+export const addressRoutes: RouteObject[] = [
+  { element: &lt;RouteGuard permission={PERMISSIONS.ADDRESS_READ} /&gt;,
+    children: [{ path: ROUTES.ADDRESSES, element: &lt;AddressesPage /&gt; }] },
+];
+
+// ⑤ ai kéo Leaflet vào? bốn chỗ, không chỗ nào là màn đăng nhập
+src/features/address/components/address-dialog.tsx      import { MapPicker } from '@twaozann01/map'
+src/features/order/components/order-tracking.tsx        import { TrackingMap } from '@twaozann01/map'
+src/features/repairman/components/service-location-card.tsx
+src/features/repairman/pages/repairmen-nearby.page.tsx`,
+  options: [
+    { id: 'a', text: '<code>manualChunks</code> chỉ quyết định module nào nằm <em>file</em> nào — nó không đụng tới <strong>đồ thị import</strong>. Chuỗi <code>index.js → routes → features/address → @twaozann01/map → leaflet</code> vẫn liền mạch toàn bằng import <strong>tĩnh</strong>, nên Leaflet phải có mặt trước khi dòng code đầu tiên chạy được' },
+    { id: 'b', text: 'Dòng <code>&lt;link rel="modulepreload" href="map-*.js"&gt;</code> chính là thủ phạm — nó là tối ưu Vite tự thêm vào; xoá dòng đó đi thì Leaflet sẽ thôi tải ở màn đăng nhập' },
+    { id: 'c', text: '<code>map-*.css</code> được nhúng bằng <code>&lt;link rel="stylesheet"&gt;</code> thường nên nó <strong>chặn vẽ</strong>: màn đăng nhập không chỉ tải thừa 15 KB CSS bản đồ mà còn phải <em>đợi nó về mới vẽ được chữ đầu tiên</em>' },
+    { id: 'd', text: 'Lý do gốc nằm ở ngôn ngữ chứ không ở Vite: <code>import</code> tĩnh được giải quyết <strong>trước khi</strong> dòng đầu tiên của module chạy, nên giữa chừng <strong>không có chỗ nào để đợi</strong>. Muốn hoãn thì phải có <code>import()</code> trả về Promise, <em>và</em> phải có <code>Suspense</code> quyết định hiện gì trong lúc đợi — vì thế code splitting <strong>không thể</strong> là một tuỳ chọn trong file cấu hình' },
+    { id: 'e', text: 'Cắt được 24 feature ra thì <code>index</code> (323 KB) giảm mạnh, nhưng <code>vendor</code> (715 KB) <strong>không giảm một byte</strong>, vì <code>react</code>, <code>react-dom</code>, <code>react-router-dom</code>, <code>axios</code>, <code>zustand</code>… vẫn bị import tĩnh từ những màn tải ngay' },
+    { id: 'f', text: 'Luật <code>manualChunks</code> hiện tại còn <strong>phá</strong> code splitting: thư viện chỉ dùng ở một màn đã lazy vẫn bị luật &#34;cứ <code>node_modules</code> là vào <code>vendor</code>&#34; gộp vào <code>vendor</code> — mà <code>vendor</code> thì nối tĩnh với entry nên vẫn tải ngay' },
+    { id: 'g', text: 'Chỉ cần bọc <code>React.lazy</code> quanh <code>AddressesPage</code> là cắt được nhánh address ra khỏi lần tải đầu' },
+    { id: 'h', text: 'Vendor vượt 700 KB rồi được &#34;xử lý&#34; bằng cách tách chunk <code>map</code> ra: cảnh báo tắt, số byte người dùng tải <strong>không đổi</strong>. Đó là dấu hiệu chỉ số hỏng — nó đo <em>kích thước từng chunk</em> (chia lại là đổi được) thay vì đo <em>tổng byte của lần tải đầu</em>' },
+  ],
+  correct: ['a', 'c', 'd', 'e', 'f', 'h'],
+  why: `
+    <div class="script">
+      <p><strong>Chia file không làm giảm thứ phải tải. Chỉ có cắt đứt đường <code>import</code> TĨNH mới làm được điều đó.</strong></p>
+      <p>Và đường import tĩnh không cắt được từ file cấu hình — cắt nó là <strong>đổi hình dạng code</strong>.</p>
+    </div>
+
+    <h4>Hiểu lầm gốc: <code>import</code> không phải một dòng lệnh được chạy</h4>
+    <p>Gần như ai cũng đọc file từ trên xuống rồi tưởng nó chạy theo đúng thứ tự đó — tưởng rằng
+    <em>"chạy tới dòng <code>import</code> thì mới đi lấy Leaflet"</em>. Sai ngay ở đó.</p>
+    <p><code>import</code> <strong>không phải câu lệnh</strong>. Nó là một <strong>lời khai báo</strong>, được
+    giải quyết <em>trước khi</em> dòng đầu tiên của file được chạy. Một ES module đi qua ba giai đoạn tách bạch:</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Giai đoạn</th><th>Chuyện gì xảy ra</th></tr></thead>
+        <tbody>
+          <tr><td><strong>1 · ĐỌC</strong></td><td>Trình duyệt đọc <code>index.js</code>, <strong>không chạy gì cả</strong>, chỉ tìm mọi chữ <code>import</code>. Thấy cần <code>routes</code> → tải → lại đọc → thấy cần <code>features/address</code> → tải tiếp → cứ thế cho tới khi không còn <code>import</code> nào chưa giải quyết.</td></tr>
+          <tr><td><strong>2 · NỐI DÂY</strong></td><td>Giờ mới biết đủ danh sách. Nối các module lại với nhau.</td></tr>
+          <tr><td><strong>3 · CHẠY</strong></td><td>Đến đây mới có dòng code đầu tiên được thực thi — và chạy <em>từ lá lên gốc</em>: <code>leaflet</code> chạy trước, cuối cùng mới tới <code>index.js</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Đọc lại giai đoạn 1 một lần nữa: <strong>toàn bộ cây import tĩnh phải tải xong trước khi một dòng
+    code nào được chạy.</strong> Không phải Vite "chọn tải sớm cho nhanh" — mà là <em>không có cách nào khác</em>.</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 268" role="img" aria-label="So do chuoi import tinh tu entry index.js xuong toi leaflet, va cho ma import dong se cat">
+        <defs>
+          <marker id="ar22" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+          <marker id="ar23" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+        <g font-family="monospace" font-size="10" fill="currentColor">
+          <rect x="30" y="10" width="230" height="24" rx="3" fill="none" stroke="currentColor"/>
+          <text x="40" y="26">index.js  (entry)</text>
+          <text x="278" y="26" fill="var(--accent)">trinh duyet tai dau tien</text>
+
+          <line x1="60" y1="34" x2="60" y2="54" stroke="currentColor" marker-end="url(#ar22)"/>
+          <text x="72" y="49" font-size="9">import tinh</text>
+
+          <rect x="30" y="56" width="230" height="24" rx="3" fill="none" stroke="currentColor"/>
+          <text x="40" y="72">src/routes/index.tsx</text>
+          <text x="278" y="72" font-size="9">24 feature, tat ca deu tinh</text>
+
+          <line x1="60" y1="80" x2="60" y2="100" stroke="currentColor" marker-end="url(#ar22)"/>
+          <text x="72" y="95" font-size="9">import tinh</text>
+
+          <rect x="30" y="102" width="230" height="24" rx="3" fill="none" stroke="currentColor"/>
+          <text x="40" y="118">features/address</text>
+
+          <line x1="60" y1="126" x2="60" y2="146" stroke="currentColor" marker-end="url(#ar22)"/>
+          <text x="72" y="141" font-size="9">import tinh</text>
+
+          <rect x="30" y="148" width="230" height="24" rx="3" fill="none" stroke="currentColor"/>
+          <text x="40" y="164">address-dialog.tsx</text>
+
+          <line x1="60" y1="172" x2="60" y2="192" stroke="currentColor" marker-end="url(#ar22)"/>
+          <text x="72" y="187" font-size="9">import tinh</text>
+
+          <rect x="30" y="194" width="230" height="24" rx="3" fill="none" stroke="currentColor"/>
+          <text x="40" y="210">@twaozann01/map</text>
+
+          <line x1="60" y1="218" x2="60" y2="238" stroke="currentColor" marker-end="url(#ar22)"/>
+
+          <rect x="30" y="240" width="230" height="24" rx="3" fill="none" stroke="var(--bad)"/>
+          <text x="40" y="256" fill="var(--bad)">leaflet -&gt; chunk map, 162 KB</text>
+
+          <line x1="300" y1="92" x2="300" y2="92" stroke="none"/>
+          <path d="M300,92 L560,92" stroke="var(--accent)" stroke-dasharray="4 3" fill="none"/>
+          <line x1="296" y1="92" x2="278" y2="92" stroke="var(--accent)" marker-end="url(#ar23)" transform="rotate(180 287 92)"/>
+          <text x="304" y="88" font-size="9" fill="var(--accent)">cho import() dong CAT duoc</text>
+          <text x="304" y="104" font-size="9" fill="var(--accent)">cat o day thi ca nhanh duoi roi ra</text>
+        </g>
+      </svg>
+      <figcaption>Sợi dây từ entry xuống Leaflet liền mạch, toàn bằng import tĩnh — nên không có mắt xích nào bỏ được. Tách chunk không cắt sợi dây này; chỉ <code>import()</code> động mới cắt.</figcaption>
+    </figure>
+
+    <h4>Vì sao không thể hoãn — "không có chỗ nào để đợi"</h4>
+    <p>Câu hỏi tiếp theo tự bật ra: <em>"Ừ thì nó tải trước. Nhưng sao không lười đi một tí — đến lúc thật
+    sự cần <code>MapPicker</code> mới đi lấy?"</em> Lý do rất vật lý.</p>
+    <p><strong>Anh thợ và bản hướng dẫn.</strong> Anh thợ làm theo bản hướng dẫn, đọc từng dòng,
+    <strong>không được dừng</strong> — vì bên ngoài có người đang đứng đợi xem kết quả:</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Bản hướng dẫn</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>Dòng 1: Lấy tấm ván ra</td><td></td></tr>
+          <tr><td>Dòng 2: Dùng <strong>cờ lê số 12</strong> siết bu-lông</td><td>← hộp đồ không có cờ lê 12</td></tr>
+          <tr><td>Dòng 3: Lắp bản lề</td><td></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Đi mua rồi quay lại làm tiếp?</strong> Không được — anh không được phép biến mất 20 phút
+      giữa chừng, người ngoài sẽ thấy công việc <em>treo cứng</em>.</li>
+      <li><strong>Bỏ qua dòng 2, làm dòng 3 trước?</strong> Không được — dòng 3 lắp bản lề lên cái bu-lông
+      chưa siết.</li>
+      <li><strong>Làm ẩu rồi sửa sau?</strong> Đó không phải "chậm", đó là "sai".</li>
+    </ul>
+    <p>Chỉ còn đúng hai cách:</p>
+    <ul>
+      <li><strong>(a)</strong> Chuẩn bị đủ đồ nghề <strong>trước khi bắt đầu</strong> → chính là <code>import</code> tĩnh.</li>
+      <li><strong>(b)</strong> <strong>Viết lại bản hướng dẫn</strong> cho có một chỗ dừng hợp pháp:
+      <em>"đặt mua cờ lê, <strong>treo biển 'đang chuẩn bị'</strong> cho người ngoài xem, hàng tới thì làm
+      tiếp từ dòng 3"</em> → chính là <code>import()</code> động.</li>
+    </ul>
+    <div class="flag">
+      <p><strong>(b) không phải chỉnh một tuỳ chọn. (b) là viết lại bản hướng dẫn.</strong> Và nó đòi thêm
+      một thứ mà (a) không cần: <strong>cái biển "đang chuẩn bị"</strong> — phải có ai đó quyết định trong
+      lúc đợi thì người dùng <em>nhìn thấy cái gì</em>.</p>
+    </div>
+
+    <h4>Vì thế code splitting không bao giờ là một dòng config</h4>
+    <div class="script">
+      <p><strong><code>manualChunks</code> là việc của người đóng gói. Code splitting là việc của người viết giao diện.</strong></p>
+      <p>Vì code splitting thay đổi thứ người dùng <strong>nhìn thấy</strong> — nó đẻ ra một trạng thái
+      "đang tải" chưa từng tồn tại. Không file cấu hình nào tự nghĩ ra được màn hình chờ giùm bạn.</p>
+    </div>
+    <p>Trong React, cắt một chỗ cần <strong>hai</strong> mảnh ghép, thiếu một là hỏng:</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Mảnh</th><th>Vai trò</th></tr></thead>
+        <tbody>
+          <tr><td><code>React.lazy(() =&gt; import(...))</code></td><td><strong>chỗ đợi</strong> — <code>import()</code> trả về Promise, và Promise là nơi duy nhất code được phép dừng</td></tr>
+          <tr><td><code>&lt;Suspense fallback={...}&gt;</code></td><td><strong>cái biển</strong> — chỗ React được phép nói "nhánh này chưa xong, tạm vẽ cái khác vào đấy"</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Tìm khắp <code>src/</code> của dự án: <strong>không có một <code>Suspense</code> nào</strong>. Không
+    phải ai đó quên — mà vì <em>chưa từng có chỗ nào cần đợi</em>, nên chưa từng cần cái biển. Không
+    <code>import()</code> nào và không <code>Suspense</code> nào là <strong>một chuyện</strong>, không phải hai.</p>
+
+    <h4>Đọc lại 4 dòng HTML — chúng hết bí ẩn</h4>
+    <p>Ba dòng script/modulepreload đầu là <strong>bản kê khai của giai đoạn 1</strong>. Vite đã đi hết cây
+    import tĩnh, biết chính xác trình duyệt sẽ phải tải gì trước khi chạy được dòng đầu, nên nó
+    <em>nói trước</em> thay vì để trình duyệt phát hiện dần từng tầng (tải <code>index.js</code> → đọc → mới
+    biết cần <code>vendor</code> → tải → đọc → mới biết cần <code>map</code>: ba lượt khứ hồi nối đuôi nhau).</p>
+    <div class="flag">
+      <p><code>modulepreload</code> <strong>không</strong> làm tải ít đi. Nó làm cùng chừng ấy byte về
+      <strong>song song thay vì xếp hàng</strong>. Xoá nó đi thì trang <em>chậm hơn</em>, chứ Leaflet vẫn tải
+      — đó là lý do <strong>b sai</strong>.</p>
+      <p>Nên <code>modulepreload</code> là <strong>thước đo trung thực nhất</strong> để soi một app: nó là
+      danh sách những thứ bundler biết chắc bạn cần ngay, và nó không nói dối được — nói dối thì app vỡ.</p>
+    </div>
+    <p>Còn dòng thứ tư tệ hơn cả ba dòng trên: <code>rel="stylesheet"</code> thường là <strong>chặn
+    vẽ</strong>. 15 KB CSS bản đồ không chỉ <em>bị tải</em> trên màn đăng nhập — nó <strong>đứng chắn trước
+    cả chữ đầu tiên</strong>.</p>
+
+    <h4>Cắt rồi thì con số nào đổi?</h4>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Chunk</th><th>Sau khi lazy 24 feature</th><th>Vì sao</th></tr></thead>
+        <tbody>
+          <tr><td><code>index</code> 323 KB</td><td><strong>giảm mạnh</strong></td><td>sợi dây tới 24 feature bị cắt; còn lại entry, layout, router, guard và đúng feature của màn đang mở</td></tr>
+          <tr><td><code>map</code> 162 KB + CSS 15 KB</td><td><strong>biến mất khỏi lần tải đầu</strong></td><td>Leaflet chỉ được import từ <code>address</code>, <code>order</code>, <code>repairman</code> — cả ba đều là feature, lazy hết thì sợi dây đứt</td></tr>
+          <tr><td><code>vendor</code> 715 KB</td><td><strong>không giảm một byte</strong></td><td><code>react</code>, <code>react-dom</code>, <code>react-router-dom</code>, <code>axios</code>, <code>zustand</code>, <code>i18next</code> thuộc về màn đầu tiên theo đúng nghĩa đen</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Để ý dòng giữa: <strong>lazy 24 feature giải luôn cả vế Leaflet</strong>, không cần đụng gì tới
+    <code>vite.config.ts</code> — đúng cái mà lần tách chunk <code>map</code> đã cố làm và không làm được.</p>
+
+    <h4>Và <code>manualChunks</code> còn phá code splitting</h4>
+    <p>Luật hiện tại là <em>"cái gì trong <code>node_modules</code> thì vào <code>vendor</code>"</em> —
+    <strong>không quan tâm ai dùng nó</strong>. Giả sử có một thư viện nặng chỉ dùng ở một màn admin: bạn bọc
+    màn đó bằng lazy rất tử tế, nhưng thư viện kia <em>vẫn bị luật gộp vào <code>vendor</code></em>, mà
+    <code>vendor</code> thì nối tĩnh với entry.</p>
+    <div class="flag">
+      <p>Gộp tất cả <code>node_modules</code> làm một không chỉ <em>không giúp</em> code splitting — nó
+      <strong>phá</strong> code splitting cho toàn bộ thư viện bên thứ ba. Bạn lazy được code của mình, còn
+      thư viện thì không.</p>
+    </div>
+    <p>Muốn <code>vendor</code> giảm thật thì phải là chuyện khác hẳn — một trong ba: <strong>(1)</strong> bỏ
+    luật <code>manualChunks</code> đi, để Rollup tự chia theo đồ thị (nó vốn đã biết đặt module dùng-chung-nhiều
+    vào chunk chung, module một-màn-dùng vào chunk của màn đó — luật thủ công đang ghi đè lên sự thông minh
+    đó); <strong>(2)</strong> giữ <code>manualChunks</code> nhưng viết theo <em>màn nào dùng gì</em>;
+    <strong>(3)</strong> bỏ bớt hoặc thay thư viện.</p>
+
+    <h4>Vì sao <code>React.lazy</code> một mình chưa đủ trong repo này — g sai</h4>
+    <p>Nhìn kỹ <code>address.routes.tsx</code>: <code>element: &lt;AddressesPage /&gt;</code> là một object JSX
+    được <strong>tạo ngay lúc module chạy</strong>, không phải lúc điều hướng tới. Còn
+    <code>...addressRoutes</code> ở <code>routes/index.tsx</code> cần một <strong>mảng có thật</strong> mới
+    trải ra được — mà bảng route thì được dựng <em>một lần, lúc khởi động app</em>, trước khi biết người
+    dùng sẽ đi đâu.</p>
+    <p>Nghĩa là bảng định tuyến ở đây là <strong>dữ liệu tĩnh dựng lúc khởi động</strong>, mà
+    <code>React.lazy</code> chỉ lười hoá được <em>component</em>, không lười hoá được <em>cái mảng chứa
+    component</em>. May là repo dùng <code>react-router-dom</code> 6.26, và từ 6.9 React Router có sẵn đúng
+    thuốc — thuộc tính <code>lazy</code> ở <strong>cấp route</strong>:</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th></th><th>Cắt được cái gì</th></tr></thead>
+        <tbody>
+          <tr><td><code>React.lazy</code></td><td>một <strong>component</strong> — file route và mọi thứ nó import ở tầng trên vẫn bị kéo vào lần tải đầu</td></tr>
+          <tr><td><code>lazy: () =&gt; import('...')</code> ở cấp route</td><td>cả <strong>nhánh định tuyến</strong>, và router tự lo phần "đang tải" nên không phải rải <code>Suspense</code> khắp nơi</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Đây là lý do việc này <strong>không phải sửa 24 dòng cho xong</strong>: phải đổi <em>hình dạng</em> của
+    bảng route. Đúng như anh thợ ở trên — <strong>phải viết lại bản hướng dẫn</strong>.</p>
+
+    <h4>Vậy rốt cuộc <code>manualChunks</code> được tích sự gì?</h4>
+    <p>Nó <strong>có</strong> giá trị thật, chỉ là giá trị đó nằm ở <strong>lần truy cập thứ hai</strong>.
+    Tên file có băm nội dung: đổi một byte thì băm đổi, tên đổi, trình duyệt coi là file mới và tải lại;
+    tên <em>giống hệt</em> thì lấy từ cache, không hỏi server một câu nào.</p>
+    <p>Tuần sau bạn sửa một chữ trong nút bấm rồi deploy:</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th></th><th>Có <code>manualChunks</code></th><th>Nếu gộp làm một bundle</th></tr></thead>
+        <tbody>
+          <tr><td><code>vendor</code> 715 KB</td><td>tên không đổi → cache, <strong>0 byte</strong></td><td>—</td></tr>
+          <tr><td><code>map</code> 162 KB</td><td>tên không đổi → cache, <strong>0 byte</strong></td><td>—</td></tr>
+          <tr><td><code>index</code> 323 KB</td><td>băm đổi → tải lại 323 KB</td><td>—</td></tr>
+          <tr><td><strong>Tổng phải tải</strong></td><td><strong>323 KB</strong></td><td><strong>1.172 KB</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Lợi ích thật, không hề nhỏ. Chỉ là nó trả lời một câu hỏi <strong>khác</strong> với câu
+    "sao mở lần đầu lâu thế".</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th></th><th>Trả lời câu hỏi</th><th>Công cụ</th><th>Ai làm</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Chunking</strong></td><td>"Lần sau tôi phải tải lại bao nhiêu?"</td><td><code>manualChunks</code>, băm tên file</td><td>file cấu hình</td></tr>
+          <tr><td><strong>Code splitting</strong></td><td>"Lần đầu tôi phải tải bao nhiêu?"</td><td><code>import()</code> động + <code>Suspense</code></td><td><strong>người viết code — phải đổi hình dạng code</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4>Còn cái ngưỡng 700 KB</h4>
+    <p>Không có "chuyện gì đã xảy ra" cả — và đó chính là vấn đề. Comment viết lúc vendor ~640 KB, chọn 700
+    để chừa chút chỗ thở. Dự án lớn dần, mỗi PR thêm một thư viện nhỏ, vendor bò qua 700. Cảnh báo nổ. Ai đó
+    <strong>tách <code>map</code> ra</strong> — cảnh báo tắt. Vendor tiếp tục bò lên, giờ là 715 KB. Cảnh báo
+    lại nổ, và lần này chưa ai xử lý.</p>
+    <ul>
+      <li><strong>Ngưỡng đặt bằng "con số hiện tại + chút đệm" thì không phải ngưỡng, nó là ảnh chụp.</strong>
+      Nó chỉ nói <em>hôm nay to bằng này</em>, không nói <em>to đến đâu thì người dùng bắt đầu khổ</em>. Con số
+      có ý nghĩa phải đến từ phía người dùng: ngân sách thời gian tải trên 4G, hoặc một chỉ số như LCP, rồi
+      từ đó suy ngược ra byte.</li>
+      <li><strong>Cảnh báo mà cách xử lý rẻ nhất là làm nó im đi, thì sớm muộn sẽ bị làm cho im.</strong> Tách
+      chunk là thao tác ba dòng và cảnh báo tắt ngay; sửa cho tải ít đi là việc của cả buổi. Con người luôn
+      chọn cái rẻ — nên nếu chỉ số của bạn <em>chỉnh cho đẹp được mà không cần cải thiện gì</em>, đó là chỉ số
+      hỏng, không phải người dùng lười.</li>
+      <li><strong>Cách chữa:</strong> đo <strong>tổng byte của lần tải đầu</strong> (thứ người dùng thật sự
+      chịu), không đo kích thước từng chunk (thứ bạn muốn chia thế nào cũng được). Đặt thành một cửa CI. Chia
+      lại chunk thì tổng không đổi → không tắt được cảnh báo bằng mẹo.</li>
+    </ul>
+
+    <div class="script">
+      <p><strong>Câu chốt nếu bị hỏi trong phỏng vấn:</strong></p>
+      <p>"Chia chunk và code splitting là hai việc khác nhau. Chia chunk quyết định module nào nằm file nào —
+      nó tối ưu cho <strong>cache ở lần truy cập thứ hai</strong>. Code splitting quyết định module nào
+      <strong>không phải tải ở lần đầu</strong>, và nó chỉ xảy ra khi có <code>import()</code> động cắt đứt đồ
+      thị import tĩnh. Muốn biết một app có code splitting thật hay không, đừng đếm số file trong
+      <code>dist/</code> — hãy mở <code>index.html</code> xem có bao nhiêu dòng <code>modulepreload</code>. Đó
+      là danh sách những thứ bundler chắc chắn bạn cần ngay, và nó không nói dối."</p>
+    </div>
+  `,
+  followups: [
+    { q: '<code>modulepreload</code> và <code>prefetch</code> khác nhau chỗ nào?',
+      a: '<p>Khác ở <strong>lời hứa gửi cho trình duyệt</strong>, và vì thế khác cả mức ưu tiên.</p><ul><li><code>modulepreload</code> nghĩa là <em>"tôi CHẮC CHẮN cần cái này để chạy được"</em> — tải với ưu tiên cao, cạnh tranh băng thông với chính những thứ đang chặn màn hình. Vite sinh nó ra cho đúng tập import tĩnh, nên nó không bao giờ là phỏng đoán.</li><li><code>prefetch</code> nghĩa là <em>"có thể lát nữa cần, rảnh thì tải"</em> — ưu tiên thấp nhất, trình duyệt để dành cho lúc mạng nhàn.</li></ul><p>Điểm đáng nhớ: <strong>preload sai chỗ còn hại hơn không preload</strong>. Băng thông trong hai giây đầu là có hạn; preload một file chưa cần tức là bạn <em>đẩy lùi</em> file đang thật sự chặn màn hình. Đó là lý do dòng <code>modulepreload</code> của <code>map</code> không chỉ "thừa" mà còn chủ động làm màn đăng nhập chậm đi.</p><p>Và một cái bẫy: <code>prefetch</code> chỉ có nghĩa khi <strong>đã</strong> có điểm cắt. App không có <code>import()</code> nào thì chẳng có gì để prefetch — mọi thứ đã nằm trong lần tải đầu rồi.</p>' },
+    { q: 'Lazy hết mọi route thì có hại gì không?',
+      a: '<p>Có, và đây là chỗ người ta hay lạm dụng sau khi mới học được kỹ thuật này.</p><ul><li><strong>Thác nước (waterfall).</strong> Trước đây mọi thứ tải song song ngay từ HTML. Giờ trình duyệt phải: tải entry → chạy → điều hướng → mới biết cần chunk nào → tải tiếp. Bạn đổi <em>một lần tải to</em> lấy <em>nhiều lần tải nhỏ nối đuôi nhau</em>. Mỗi lần điều hướng là thêm một vòng khứ hồi mạng.</li><li><strong>Nháy màn hình.</strong> Mỗi lần bấm sang trang mới là một nhịp thấy spinner. Cắt quá nhỏ thì giao diện giật liên tục, cảm giác <em>tệ hơn</em> dù tổng byte ít hơn.</li><li><strong>Cắt nhầm chỗ.</strong> Lazy một component 3 KB thì tiết kiệm chẳng bao nhiêu mà vẫn lãnh đủ một vòng mạng.</li></ul><p>Nguyên tắc thực dụng: <strong>cắt theo màn, không cắt theo component</strong>, và ưu tiên những màn <em>đa số người dùng không vào</em> — trang admin, báo cáo, cấu hình. Rồi bù lại độ trễ bằng <strong>prefetch khi rê chuột</strong> lên link: người ta rê chuột trước khi bấm khoảng 100–300 ms, đủ để chunk về kịp và spinner không bao giờ kịp hiện.</p><p>Nói gọn: <strong>mục tiêu không phải "cắt càng nhiều càng tốt", mà là "màn đầu tiên nhẹ nhất có thể, những màn sau đừng để người dùng thấy mình đang đợi".</strong></p>' },
+    { q: 'Làm sao đo được lần tải đầu <em>thật sự</em> tốn bao nhiêu?',
+      a: '<p>Ba tầng, từ rẻ tới thật:</p><ul><li><strong>Đọc <code>dist/index.html</code>.</strong> Miễn phí và không nói dối: cộng kích thước entry + mọi chunk có <code>modulepreload</code> + mọi <code>stylesheet</code>. Đúng bằng những gì trình duyệt phải có trước khi chạy dòng đầu tiên. Với repo này ra đúng 1.172 KB.</li><li><strong>Tab Coverage của Chrome DevTools.</strong> Nó chỉ ra bao nhiêu phần trăm code <em>đã tải nhưng chưa hề chạy</em>. Màn đăng nhập của dự án này sẽ hiện Leaflet ở mức gần 100% chưa dùng — bằng chứng trực quan nhất, và là thứ đáng chụp màn hình đưa vào PR.</li><li><strong>Ngân sách trong CI.</strong> Một script sau <code>build</code> tính đúng tổng ở gạch đầu dòng thứ nhất rồi so với một trần cố định, vượt thì fail. Khác hẳn <code>chunkSizeWarningLimit</code> ở chỗ <strong>chia lại chunk không làm tổng đổi</strong>, nên không ai tắt được cảnh báo bằng mẹo.</li></ul><p>Và đừng quên đo <strong>sau khi nén</strong>: con số byte trên đĩa là JS thô, còn thứ đi qua dây là bản gzip/brotli, thường chỉ khoảng một phần ba. Tỷ lệ giữa các chunk thì gần như không đổi, nên kết luận của bài không suy suyển — nhưng khi báo cáo cho người khác mà nói "715 KB" trong khi thực tế truyền ~200 KB thì bạn sẽ bị bắt bẻ đúng.</p>' },
+  ],
+},
+
 /* ---------------------------------------------------------- BE */
 {
   id: 'be-01',
