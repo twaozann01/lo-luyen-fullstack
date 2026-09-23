@@ -543,7 +543,7 @@
    NGÂN HÀNG CÂU HỎI — thêm câu = nối object vào BANK
    ============================================================ */
 
-const SECTIONS = { fe: 'Front-end', be: 'Back-end', fs: 'Bảo mật web' };
+const SECTIONS = { fe: 'Front-end', be: 'Back-end', fs: 'Bảo mật web', kt: 'Kiến trúc' };
 
 const BANK = [
 
@@ -4581,6 +4581,157 @@ Idempotency-Key: 8f3c1a9e-4b22-4d7e-9c10-5a6b7c8d9e0f
       a: '<p>Vì <strong>web đã như vậy từ trước khi có bảo mật</strong>. Thẻ <code>&lt;img src&gt;</code> trỏ sang máy chủ khác, <code>&lt;form action&gt;</code> submit sang trang khác, <code>&lt;script src&gt;</code> nạp thư viện từ CDN — tất cả đều là request chéo origin, và tất cả đều có từ những năm 90.</p><p>Cấm gửi chéo origin đồng nghĩa với <strong>phá vỡ toàn bộ web hiện có</strong>. Không trình duyệt nào dám làm, vì trình duyệt nào làm trước sẽ là trình duyệt bị người dùng gỡ bỏ đầu tiên.</p><p>Nên thay vì cấm, họ vá theo hướng khác: chặn <em>đọc</em> (same-origin policy, ra đời sau), rồi thêm cơ chế nới lỏng có kiểm soát (CORS), rồi thêm <code>SameSite</code> để bịt nốt vế gửi <em>mà không phá thứ đang chạy</em> — <code>Lax</code> vẫn cho phép điều hướng <code>GET</code> chính là để không làm hỏng chuyện bấm link từ trang khác.</p><p>Bài học rộng hơn, gặp lại ở khắp nơi: <strong>bảo mật của các hệ thống lâu đời hầu như luôn là các lớp vá chồng lên nhau, không phải một thiết kế mạch lạc.</strong> Hiểu <em>vì sao nó lởm chởm như thế</em> giúp nhớ lâu hơn nhiều so với học thuộc từng luật.</p>' },
     { q: 'Preflight tốn thêm một vòng mạng cho mỗi request à?',
       a: '<p>Không — kết quả preflight được <strong>cache</strong>. Server trả <code>Access-Control-Max-Age: 86400</code> thì trình duyệt nhớ trong một ngày, chỉ hỏi lại khi hết hạn.</p><p>Nhưng có hai bẫy thực tế:</p><ul><li>Trình duyệt <strong>tự đặt trần</strong> cho giá trị này — Chrome giới hạn 2 tiếng, Firefox 24 tiếng — nên khai 7 ngày cũng vô ích.</li><li>Cache tính theo <strong>từng tổ hợp URL + method + header</strong>. API REST nhiều đường dẫn thì mỗi đường dẫn một lượt preflight riêng, và lần tải trang đầu tiên sẽ thấy rõ độ trễ.</li></ul><p>Muốn né hẳn thì đưa API về <strong>cùng origin</strong> với trang web — đặt sau cùng một domain, đường dẫn <code>/api</code>, cho reverse proxy chuyển tiếp. Cùng origin thì không có CORS, không có preflight, và tiện thể cookie <code>SameSite=Strict</code> cũng dùng được thoải mái.</p><p>Đây là một lựa chọn hạ tầng hay bị bỏ qua: <strong>rất nhiều rắc rối về CORS biến mất không phải nhờ cấu hình khéo, mà nhờ không còn chéo origin nữa.</strong></p>' },
+  ],
+},
+
+/* ---------------------------------------------------------- KIẾN TRÚC */
+{
+  id: 'kt-01',
+  section: 'kt',
+  topic: 'Tài liệu kiến trúc',
+  level: 'trung bình',
+  multi: true,
+  q: 'Bạn nhận bàn giao dịch vụ ví của một sàn thương mại. Trong repo có <code>docs/system-design.md</code> và thư mục <code>docs/adr/</code> gồm 6 file đánh số. Nhận định nào <strong>đúng</strong> về hai loại tài liệu này?',
+  code: `docs/
+├── system-design.md          ← 1 file, v3, cập nhật 2026-09
+└── adr/
+    ├── 0001-monolith-cho-mvp.md        [Đã bị thay bởi 0004]
+    ├── 0002-rest-khong-graphql.md      [Đã chấp nhận]
+    ├── 0003-postgres-cho-vi.md         [Đã chấp nhận]
+    ├── 0004-tach-wallet-service.md     [Đã chấp nhận]
+    ├── 0005-thong-bao-qua-queue.md     [Đã chấp nhận]
+    └── 0006-redis-cache-catalog.md     [Đã chấp nhận]`,
+  options: [
+    { id: 'a', text: 'ADR là bản <strong>chi tiết hơn</strong> của system design: system design vẽ tổng quan toàn hệ thống, còn ADR đi sâu vào từng thành phần một' },
+    { id: 'b', text: 'System design mô tả hệ thống <strong>là gì</strong> và chạy thế nào; ADR ghi lại <strong>vì sao</strong> chọn như vậy, mỗi quyết định một bản ghi' },
+    { id: 'c', text: 'Khi đội quyết định làm khác đi, việc đúng là <strong>sửa thẳng ADR cũ</strong> cho khớp hiện trạng, để người sau không đọc nhầm thông tin lỗi thời' },
+    { id: 'd', text: 'Một ADR có thể nói về quyết định <strong>to nhất</strong> của cả hệ thống — như <code>0001</code> chọn monolith — chứ không chỉ về các chi tiết nhỏ bên trong' },
+    { id: 'e', text: 'Phần đáng giá nhất của một ADR là <strong>các phương án đã loại</strong> và <strong>cái giá phải chấp nhận</strong>, vì đó đúng là thứ sơ đồ kiến trúc không bao giờ thể hiện được' },
+    { id: 'f', text: 'Khi kiến trúc đổi, cập nhật system design bằng cách <strong>viết đè lên bản cũ</strong> là đúng quy trình — nó vốn là ảnh chụp hiện trạng, chỉ bản mới nhất mới đúng' },
+    { id: 'g', text: 'Nếu sơ đồ kiến trúc đã đầy đủ và code viết sạch thì ADR là thừa, vì đọc code là biết hết mọi thứ cần biết' },
+    { id: 'h', text: 'ADR chỉ dùng cho quyết định back-end và hạ tầng; chuyện front-end chọn Zustand hay Redux thì không thuộc phạm vi của nó' },
+  ],
+  correct: ['b', 'd', 'e', 'f'],
+  why: `
+    <div class="script">
+      <p><strong>Đây không phải hai mức zoom của cùng một thứ. Đây là hai câu hỏi khác nhau.</strong></p>
+      <p>System design trả lời <em>"hệ thống là gì"</em>. ADR trả lời <em>"vì sao nó thành ra như vậy"</em>.
+      Nhầm hai thứ này thành "tổng quan và chi tiết" là hiểu sai phổ biến nhất, và đáp án <strong>a</strong>
+      sinh ra để bắt đúng chỗ đó.</p>
+    </div>
+
+    <h4>Bản vẽ ngôi nhà và cuốn sổ ghi lý do</h4>
+    <p>Hãy tưởng tượng bạn mua lại một căn nhà, và người chủ cũ để lại hai thứ.</p>
+    <p>Thứ nhất là <strong>bản vẽ</strong>: nhà mấy tầng, phòng nào nằm đâu, ống nước chạy thế nào, điện đi
+    đường nào. Nhìn vào là biết ngôi nhà <strong>trông ra sao</strong>.</p>
+    <p>Thứ hai là <strong>cuốn sổ</strong>, mỗi trang một dòng đại loại: <em>"Ngày 3/5 chốt mái tôn thay vì
+    mái ngói. Lý do: thiếu 200 triệu, và vùng này ít bão. Đổi lại thì nhà nóng hơn, 10 năm nữa có thể phải
+    thay."</em> Đọc vào là biết <strong>vì sao ngôi nhà lại thành ra thế này</strong>.</p>
+    <p>Năm năm sau, người thợ mới đến nhìn bản vẽ thấy mái tôn, liền nghĩ <em>"ai làm dở thế, đổi ngói đi"</em>.
+    Chỉ khi đọc cuốn sổ, anh ta mới biết lúc đó bị ràng buộc bởi cái gì — và mới trả lời được câu hỏi thật sự
+    quan trọng: <strong>ràng buộc đó bây giờ còn đúng không?</strong></p>
+
+    <h4>Vì sao đáp án a sai: đây là hai trục, không phải một</h4>
+    <p>Nếu xếp hai tài liệu lên cùng một trục tổng-quan ↔ chi-tiết thì sẽ tắc ngay: ADR
+    <code>0001</code> nói về chuyện monolith hay microservices — <strong>còn tổng quan hơn cả sơ đồ</strong>.
+    Nó chẳng "đi sâu" vào đâu cả.</p>
+    <p>Sự thật là có <strong>hai trục</strong> vuông góc nhau. Trục zoom nằm gọn <em>bên trong</em> cột mô tả:</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 214" role="img" aria-label="Bang hai truc: cot trai mo ta cai gi la system design, cot phai giai thich vi sao la ADR; hang tren tong quan, hang duoi chi tiet">
+        <line x1="96" y1="6" x2="96" y2="208" stroke="currentColor" stroke-width="1" opacity=".3"/>
+        <line x1="356" y1="6" x2="356" y2="208" stroke="currentColor" stroke-width="1.6" stroke-dasharray="4 3" stroke-opacity=".8"/>
+        <line x1="4" y1="42" x2="616" y2="42" stroke="currentColor" stroke-width="1" opacity=".3"/>
+        <line x1="4" y1="126" x2="616" y2="126" stroke="currentColor" stroke-width="1" opacity=".3"/>
+
+        <text x="226" y="18" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle">MÔ TẢ: CÁI GÌ</text>
+        <text x="226" y="32" font-size="10.5" font-family="monospace" fill="var(--accent)" text-anchor="middle">= system design</text>
+        <text x="486" y="18" font-size="10" font-family="monospace" fill="currentColor" text-anchor="middle">GIẢI THÍCH: VÌ SAO</text>
+        <text x="486" y="32" font-size="10.5" font-family="monospace" fill="var(--accent)" text-anchor="middle">= ADR</text>
+
+        <text x="8" y="80" font-size="9.5" font-family="monospace" fill="currentColor">TỔNG</text>
+        <text x="8" y="92" font-size="9.5" font-family="monospace" fill="currentColor">QUAN</text>
+        <text x="106" y="62" font-size="9.5" font-family="monospace" fill="currentColor">Nhà 3 tầng, bếp ở tầng 1</text>
+        <text x="106" y="80" font-size="9.5" font-family="monospace" fill="currentColor">Sơ đồ: Gateway → Order →</text>
+        <text x="106" y="93" font-size="9.5" font-family="monospace" fill="currentColor">Wallet → Postgres</text>
+        <text x="106" y="112" font-size="8.5" font-family="monospace" fill="currentColor" opacity=".6">mục 2 của system-design.md</text>
+        <text x="366" y="62" font-size="9.5" font-family="monospace" fill="currentColor">Vì sao 3 tầng? Đất 50m2,</text>
+        <text x="366" y="75" font-size="9.5" font-family="monospace" fill="currentColor">nhà 6 người</text>
+        <text x="366" y="93" font-size="9.5" font-family="monospace" fill="currentColor">ADR-0001: monolith hay</text>
+        <text x="366" y="106" font-size="9.5" font-family="monospace" fill="currentColor">microservices</text>
+        <text x="366" y="118" font-size="8.5" font-family="monospace" fill="currentColor" opacity=".6">quyết định to nhất — vẫn là ADR</text>
+
+        <text x="8" y="164" font-size="9.5" font-family="monospace" fill="currentColor">CHI</text>
+        <text x="8" y="176" font-size="9.5" font-family="monospace" fill="currentColor">TIẾT</text>
+        <text x="106" y="148" font-size="9.5" font-family="monospace" fill="currentColor">Tủ bếp gỗ sồi, cao 85cm</text>
+        <text x="106" y="166" font-size="9.5" font-family="monospace" fill="currentColor">Bảng wallet_tx: từng cột,</text>
+        <text x="106" y="179" font-size="9.5" font-family="monospace" fill="currentColor">từng index</text>
+        <text x="106" y="198" font-size="8.5" font-family="monospace" fill="currentColor" opacity=".6">mục 4 — vẫn là system design</text>
+        <text x="366" y="148" font-size="9.5" font-family="monospace" fill="currentColor">Vì sao gỗ sồi? Bếp ẩm,</text>
+        <text x="366" y="161" font-size="9.5" font-family="monospace" fill="currentColor">MDF phồng sau 3 năm</text>
+        <text x="366" y="179" font-size="9.5" font-family="monospace" fill="currentColor">ADR-0003: Postgres cho ví,</text>
+        <text x="366" y="192" font-size="9.5" font-family="monospace" fill="currentColor">đã loại Mongo vì cần ACID</text>
+      </svg>
+      <figcaption>Trục zoom (trên/dưới) nằm <strong>bên trong</strong> cột trái. ADR là cả cột phải, ở mọi mức zoom.</figcaption>
+    </figure>
+
+    <p>Mẹo tự kiểm tra: đọc một câu trong tài liệu rồi hỏi <em>"tại sao?"</em>. Câu đó <strong>không trả lời được</strong>
+    "tại sao" thì nó là design (<em>"ví dùng PostgreSQL"</em>). Câu đó <strong>chính là</strong> câu trả lời cho
+    "tại sao" thì nó là ADR (<em>"vì chuyển tiền phải nguyên tử, đã loại Mongo vì…"</em>).</p>
+
+    <h4>Vì sao đáp án c sai: ADR chỉ ghi thêm, không sửa</h4>
+    <p>Đây là điểm dễ vấp thứ hai. Nhìn cây thư mục ở đề bài: <code>0001</code> đã bị <code>0004</code> thay thế,
+    nhưng nó <strong>vẫn nằm đó</strong>, chỉ đổi trạng thái sang "Đã bị thay". Sửa hay xoá nó đi là tự tay đốt
+    mất thứ duy nhất giải thích được vì sao hệ thống từng như vậy — và rồi ba năm nữa sẽ có người đề xuất lại
+    đúng cái ý tưởng mà đội đã cân nhắc và loại bỏ.</p>
+    <div class="tbl-wrap"><table>
+      <tr><th></th><th>System design</th><th>ADR</th></tr>
+      <tr><td><strong>Số lượng</strong></td><td>Một bản cho cả hệ thống</td><td>Mỗi quyết định một bản ghi</td></tr>
+      <tr><td><strong>Khi có thay đổi</strong></td><td><strong>Sửa đè</strong> — chỉ bản mới nhất là đúng</td><td><strong>Ghi thêm</strong> — bản cũ đánh dấu "đã bị thay"</td></tr>
+      <tr><td><strong>Đọc để</strong></td><td>Hiểu hệ thống, để làm việc với nó</td><td>Hiểu ràng buộc, để <em>thay đổi</em> nó</td></tr>
+      <tr><td><strong>Độ dài</strong></td><td>Dài, nhiều sơ đồ</td><td>Khoảng 1 trang, theo mẫu cố định</td></tr>
+    </table></div>
+
+    <h4>Một ADR đầy đủ gồm những gì</h4>
+    <div class="tbl-wrap"><table>
+      <tr><th>Mục</th><th>Nội dung</th></tr>
+      <tr><td><strong>Trạng thái</strong></td><td>Đề xuất / Đã chấp nhận / Đã bị thay bởi ADR-xxxx — kèm ngày</td></tr>
+      <tr><td><strong>Bối cảnh</strong></td><td>Ràng buộc lúc đó: số dư phải luôn đúng, chuyển tiền phải nguyên tử, team 3 người</td></tr>
+      <tr><td><strong>Quyết định</strong></td><td>Một câu: lưu ví trong PostgreSQL, mỗi lần chuyển tiền là một transaction</td></tr>
+      <tr><td><strong>Đã cân nhắc và loại</strong></td><td>Mongo (team chưa quen multi-doc transaction), DynamoDB (khoá vào AWS)</td></tr>
+      <tr><td><strong>Hệ quả</strong></td><td>Được: ACID, giữ được bất biến tổng số dư = 0. Mất: scale ngang khó, có thể phải shard</td></tr>
+    </table></div>
+    <p>Hai mục cuối là thứ <strong>duy nhất</strong> không suy ra được từ code lẫn sơ đồ — nên cũng là lý do
+    đáp án <strong>g</strong> sai. Code cho bạn biết hệ thống <em>làm gì</em>, không bao giờ cho biết
+    <em>những gì đã bị loại và vì sao</em>.</p>
+
+    <div class="flag"><p>Đáp án <strong>h</strong> sai vì ADR không phân biệt tầng nào của stack. "Chọn TanStack
+    Query cho server state, Zustand cho client state, và vì sao không gộp cả hai vào Redux" là một ADR hoàn
+    chỉnh — đúng cái luật mà câu <code>fe-01</code> mở đầu bằng. Ở đó bạn đọc <em>luật</em>; ADR là chỗ ghi
+    <em>vì sao có luật đó</em>.</p></div>
+
+    <h4>Câu chốt khi phỏng vấn</h4>
+    <div class="script">
+      <p>"System design mô tả hệ thống <strong>là gì</strong> — ở mọi mức, từ sơ đồ thành phần xuống tới từng
+      cột trong bảng. ADR ghi lại <strong>vì sao</strong> chọn như vậy, mỗi quyết định một bản ghi, dù quyết
+      định đó to hay nhỏ.</p>
+      <p>Khác biệt lớn nhất là theo thời gian: bản thiết kế bị viết đè, chỉ bản mới nhất mới đúng; còn ADR chỉ
+      dài thêm — bản cũ được đánh dấu 'đã bị thay' chứ không xoá, vì cái đội cần sau này không phải là hiện
+      trạng, mà là <strong>ràng buộc lúc ra quyết định giờ còn đúng hay không</strong>.</p>
+      <p>Ở dự án của tôi, quy ước là mỗi lựa chọn có thể gây tranh cãi sau sáu tháng thì viết một ADR một
+      trang: bối cảnh, quyết định, các phương án đã loại, và cái giá chấp nhận trả. Tốn mười phút, nhưng đỡ
+      được nguyên một buổi họp 'sao hồi đó lại làm thế'."</p>
+    </div>
+  `,
+  followups: [
+    { q: 'Khi nào thì một quyết định đáng viết ADR, khi nào thì thôi?',
+      a: '<p>Thước đo thực dụng: <strong>một quyết định đáng viết ADR khi việc đảo ngược nó tốn kém, và khi sáu tháng nữa sẽ có người hỏi "sao hồi đó lại làm thế".</strong></p><p>Đáng viết: chọn cơ sở dữ liệu, tách hay gộp service, đồng bộ hay bất đồng bộ, chọn cách xác thực, chọn framework cho cả dự án, và <em>những chuyện cố ý làm khác chuẩn chung</em> — loại này đặc biệt đáng viết, vì nó trông như lỗi cho tới khi người ta biết lý do.</p><p>Không đáng: đặt tên biến, chia file, chọn thư viện có thể thay trong một buổi chiều. Những thứ đó thuộc về code review và tài liệu code.</p><p>Bẫy hay gặp là viết quá nhiều: một thư mục 80 ADR cho các chuyện vặt thì cũng vô dụng như không có ADR nào, vì không ai đọc nữa. Ít mà đúng chỗ thì hơn.</p>' },
+    { q: 'Ai viết ADR, và viết vào lúc nào — trước hay sau khi code?',
+      a: '<p><strong>Người ra quyết định viết</strong>, không phải một "người viết tài liệu" nào đó. Cái giá trị nhất của ADR — các phương án đã loại — nằm trong đầu người vừa cân nhắc chúng, và bay mất rất nhanh.</p><p>Về thời điểm: viết <strong>trước hoặc ngay lúc chốt</strong>, ở trạng thái "Đề xuất". Khi đó ADR còn là công cụ <em>để bàn</em>: đội đọc bản nháp, cãi nhau trên các phương án, rồi mới đổi trạng thái sang "Đã chấp nhận". Viết sau khi code xong thì nó tụt xuống thành biên bản, và thường là bản biên bản đã được tô hồng — người ta vô thức bịa ra lý do nghe hợp lý cho cái mình đã làm.</p><p>Thực tế hay dùng: ADR nằm ngay trong repo dưới dạng file markdown, và được <strong>review trong cùng pull request</strong> với đoạn code đầu tiên hiện thực nó. Tài liệu sống cùng code thì mới không bị bỏ quên.</p>' },
+    { q: 'Vậy còn RFC và design doc — có khác ADR không?',
+      a: '<p>Khác ở <strong>mục đích</strong> và <strong>vòng đời</strong>, dù nhìn qua đều là "văn bản có tiêu đề".</p><ul><li><strong>RFC / design doc</strong>: viết <em>trước</em> để <strong>xin ý kiến</strong> về một mảng việc sắp làm. Dài, có thể vài chục trang, bàn nhiều phương án. Xong việc thì nó thành tài liệu lịch sử, ít ai quay lại đọc.</li><li><strong>ADR</strong>: <em>kết tinh</em> của một quyết định. Ngắn, một trang, theo mẫu cố định, và <strong>được đọc lại</strong> mỗi khi có người muốn thay đổi chỗ đó.</li></ul><p>Nhiều đội dùng cả hai và nối chúng lại: RFC bàn rộng, chốt xong thì đẻ ra hai ba ADR, mỗi ADR một quyết định, có link ngược về RFC. Không có ai cấm đội bạn làm khác — điều quan trọng là <strong>một chỗ ổn định, dễ tìm, ghi lý do</strong>, tên gọi là gì thì tuỳ.</p><p>Trong phỏng vấn, nói được đúng chỗ khác nhau này là dấu hiệu đã làm thật chứ không phải đọc blog.</p>' },
+    { q: 'Sơ đồ kiến trúc vẽ xong là lỗi thời ngay. Có cách nào đỡ hơn không?',
+      a: '<p>Có, và nó là câu hỏi hay vì chạm đúng điểm yếu thật của system design: <strong>nó là ảnh chụp, mà hệ thống thì động.</strong></p><p>Ba cách thường dùng, theo thứ tự công sức:</p><ul><li><strong>Vẽ bằng chữ, để trong repo</strong> — Mermaid hay PlantUML, sửa cùng pull request như sửa code. Chỉ riêng việc thoát khỏi mấy file ảnh trôi nổi trong Slack đã giải quyết được phân nửa vấn đề.</li><li><strong>Chia theo mức C4</strong> — mức bối cảnh và mức container đổi rất chậm nên hiếm khi sai; mức component đổi liên tục nên đừng vẽ, hoặc chấp nhận nó sẽ cũ.</li><li><strong>Sinh từ hiện trạng</strong> — dựng sơ đồ phụ thuộc từ service mesh hoặc từ tracing. Luôn đúng, nhưng chỉ cho biết <em>cái gì đang gọi cái gì</em>, không cho biết <em>ý đồ</em>.</li></ul><p>Và đây là chỗ hai tài liệu bù cho nhau: <strong>sơ đồ lỗi thời thì còn cứu được bằng cách vẽ lại từ hiện trạng, nhưng lý do đã mất thì không có cách nào lấy lại.</strong> Đó chính là lý do ADR đáng công hơn sơ đồ, dù trông kém long lanh hơn nhiều.</p>' },
   ],
 },
 ];
