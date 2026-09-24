@@ -4584,6 +4584,117 @@ Idempotency-Key: 8f3c1a9e-4b22-4d7e-9c10-5a6b7c8d9e0f
   ],
 },
 
+{
+  id: 'fe-17',
+  section: 'fe',
+  topic: 'Hiệu năng FE',
+  level: 'khó',
+  multi: true,
+  q: 'Tiếp câu trước. Trong <code>vite.config.ts</code> của <code>marketplace-fe</code> có luật <code>manualChunks</code> dưới đây, và <code>src/</code> vẫn <strong>không có một <code>import()</code> động nào</strong>. Bây giờ bạn <strong>xoá hẳn luật đó</strong> rồi build lại, không sửa một dòng nào trong <code>src/</code>. Nhận định nào <strong>đúng</strong>?',
+  code: `manualChunks(id) {
+  if (id.includes('node_modules')) {
+    if (id.includes('leaflet') || id.includes('@twaozann01/map')) return 'map';
+    return 'vendor';            // mọi thư viện khác — không hỏi ai dùng
+  }
+}
+
+// Build hiện tại:  vendor 715.311 + index 322.989 + map 162.440 = 1.200.740 byte`,
+  options: [
+    { id: 'a', text: 'Lần tải đầu <strong>giảm rõ rệt</strong>, vì bỏ luật thủ công đi thì Rollup được tự chia theo đồ thị — nó thông minh hơn luật viết tay' },
+    { id: 'b', text: 'Lần tải đầu <strong>gần như không đổi</strong>: 1.200.740 byte chia làm 3 chunk trở thành <strong>một</strong> chunk 1.209.736 byte (gzip 357.037 → 361.622)' },
+    { id: 'c', text: 'Khả năng "tự chia theo màn" của Rollup chỉ kích hoạt khi <strong>có điểm cắt động</strong>. Repo không có <code>import()</code> nào nên cả app là <strong>một đồ thị tĩnh liền mạch</strong> — xếp vào mấy hộp thì tổng vẫn thế' },
+    { id: 'd', text: 'Dù không giảm được byte, luật đó vẫn có cái lợi <strong>thật</strong>: <code>vendor</code> tách riêng nên deploy đổi code app, người dùng không phải tải lại 715 KB thư viện' },
+    { id: 'e', text: 'Luật đó lại gây một thiệt hại <strong>có thật</strong>: nó đẻ ra <code>map-*.css</code> riêng, file này nhúng bằng <code>&lt;link rel="stylesheet"&gt;</code> thường nên <strong>chặn vẽ</strong> — màn đăng nhập đợi CSS bản đồ về mới vẽ được chữ đầu tiên' },
+    { id: 'f', text: 'Chỗ luật này <strong>thật sự</strong> phá hoại là <em>về sau</em>: khi đã lazy 24 feature bằng <code>lazy:</code> cấp route, thư viện của các màn đó vẫn bị lùa vào <code>vendor</code>, mà <code>vendor</code> nối tĩnh với entry' },
+    { id: 'g', text: 'Chia thành nhiều chunk nhỏ thì <strong>chắc chắn</strong> tổng byte nhỏ hơn gộp một file, vì mỗi chunk được minify riêng nên nén tốt hơn' },
+    { id: 'h', text: '<code>chunkSizeWarningLimit: 700</code> đo đúng thứ người dùng phải tải, nên khi build không còn cảnh báo nghĩa là lần tải đầu đã ở mức chấp nhận được' },
+  ],
+  correct: ['b', 'c', 'd', 'e', 'f'],
+  why: `
+    <div class="script">
+      <p><strong>Đổi cách xếp hộp không làm thay đổi số đồ phải mang.</strong></p>
+      <p>Câu này là cái bẫy dành cho người <em>đã</em> học được bài trước. Nghe "luật thủ công ghi đè lên
+      sự thông minh sẵn có của Rollup" rất thuận tai — nhưng sự thông minh đó chỉ chạy khi <strong>có điểm
+      cắt động</strong>. Không có <code>import()</code> nào thì Rollup chẳng có gì để thông minh cả.</p>
+    </div>
+
+    <h4>Số đo thật, không phải suy luận</h4>
+    <p>Đã build cả hai bản trong chính <code>marketplace-fe</code>:</p>
+    <div class="tbl-wrap"><table>
+      <tr><th></th><th>Có <code>manualChunks</code></th><th>Xoá <code>manualChunks</code></th></tr>
+      <tr><td><strong>JS</strong></td>
+          <td>715.311 + 322.989 + 162.440<br><strong>= 1.200.740 byte</strong></td>
+          <td>một file duy nhất<br><strong>= 1.209.736 byte</strong></td></tr>
+      <tr><td><strong>JS sau gzip</strong></td><td>357.037 byte</td><td>361.622 byte</td></tr>
+      <tr><td><strong>CSS</strong></td><td>38.664 + 15.037</td><td>53.961</td></tr>
+    </table></div>
+    <p>Bỏ luật đi còn <strong>nhỉnh hơn 9 KB</strong> — chênh lệch cỡ đó chỉ là chuyện minify, không phải
+    tín hiệu gì. Kết luận: <strong>không đổi</strong>. Đó là lý do đáp án <strong>a</strong> và
+    <strong>g</strong> sai.</p>
+
+    <figure class="dg">
+      <svg viewBox="0 0 620 146" role="img" aria-label="Hai thanh cung do dai: ban co manualChunks chia ba hop, ban xoa luat chi mot hop, tong byte nhu nhau">
+        <text x="8" y="26" font-size="9.5" font-family="monospace" fill="currentColor">CÓ LUẬT</text>
+        <rect x="90" y="16" width="308" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="244" y="33" font-size="9.5" font-family="monospace" fill="currentColor" text-anchor="middle">vendor 715.311</text>
+        <rect x="400" y="16" width="138" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="469" y="33" font-size="9" font-family="monospace" fill="currentColor" text-anchor="middle">index 322.989</text>
+        <rect x="540" y="16" width="68" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="574" y="33" font-size="8.5" font-family="monospace" fill="currentColor" text-anchor="middle">map 162k</text>
+
+        <text x="8" y="84" font-size="9.5" font-family="monospace" fill="currentColor">XOÁ LUẬT</text>
+        <rect x="90" y="74" width="524" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="352" y="91" font-size="9.5" font-family="monospace" fill="currentColor" text-anchor="middle">index 1.209.736</text>
+
+        <line x1="90" y1="112" x2="614" y2="112" stroke="var(--accent)" stroke-width="1" stroke-dasharray="3 3"/>
+        <text x="352" y="128" font-size="9.5" font-family="monospace" fill="var(--accent)" text-anchor="middle">cùng một lượng byte phải tải trước khi dòng code đầu tiên chạy</text>
+        <text x="352" y="140" font-size="8.5" font-family="monospace" fill="currentColor" text-anchor="middle" opacity=".65">vì cả hai bản đều nằm trọn trong cây import tĩnh của entry</text>
+      </svg>
+      <figcaption>Ba hộp hay một hộp, anh thợ vẫn phải mang về đủ ngần ấy đồ trước khi bắt đầu làm.</figcaption>
+    </figure>
+
+    <h4>Vậy luật đó làm gì? Một lợi, một hại, và một quả bom hẹn giờ</h4>
+    <p><strong>Lợi (đáp án d) — có thật.</strong> Tách <code>vendor</code> ra là chiến thuật <em>cache</em>,
+    không phải chiến thuật <em>giảm tải</em>. Lần đầu vẫn tải đủ, nhưng những lần deploy sau, code app đổi mà
+    thư viện không đổi thì 715 KB kia lấy từ cache. Comment trong config nói đúng ý định.</p>
+    <p><strong>Hại (đáp án e) — cũng có thật.</strong> Tách <code>map</code> ra kéo theo <code>map-*.css</code>
+    thành file riêng, và Vite nhúng nó bằng <code>&lt;link rel="stylesheet"&gt;</code> thường. CSS là tài nguyên
+    <strong>chặn vẽ</strong>: trình duyệt không vẽ chữ đầu tiên cho tới khi nó về. Màn đăng nhập đang đợi CSS
+    của bản đồ.</p>
+    <p><strong>Quả bom hẹn giờ (đáp án f) — quan trọng nhất.</strong> Hôm nay luật này vô hại về mặt byte, vì
+    chưa có điểm cắt nào. Nhưng ngày bạn làm việc khó nhất — lazy đủ 24 feature bằng <code>lazy:</code> cấp
+    route — thì luật vẫn lùa mọi <code>node_modules</code> vào <code>vendor</code>, và <code>vendor</code> vẫn
+    nối tĩnh với entry. Code của bạn được cắt, còn thư viện của 24 màn thì không. Bạn làm phần nặng nhọc nhất
+    và một dòng config vô hiệu hoá gần hết thành quả.</p>
+
+    <div class="flag"><p><strong>Đáp án h sai, và nó là cái bẫy âm thầm nhất.</strong>
+    <code>chunkSizeWarningLimit</code> đo <em>từng chunk</em>, không đo tổng. Chia 1,2 MB thành bốn chunk 300 KB
+    là cảnh báo biến mất trong khi người dùng vẫn tải đúng từng ấy. Nó là thước đo <strong>có thể lách bằng
+    cách xếp lại hộp</strong> — nên đừng dùng nó làm ngân sách. Thước đo không nói dối được là
+    <strong>entry + mọi <code>modulepreload</code> + mọi stylesheet trong <code>dist/index.html</code></strong>.</p></div>
+
+    <h4>Câu chốt khi phỏng vấn</h4>
+    <div class="script">
+      <p>"Tôi tách <code>vendor</code> vì lý do <strong>cache</strong>, và tôi nói rõ như vậy — nó không giảm
+      một byte nào ở lần tải đầu. Tôi có build thử cả hai bản để chắc: 1.200.740 byte chia ba chunk so với
+      1.209.736 byte gộp một chunk, chênh nhau trong sai số.</p>
+      <p>Lý do là <code>manualChunks</code> chỉ quyết định <strong>xếp module vào hộp nào</strong>, còn thứ
+      quyết định lần tải đầu là <strong>cây <code>import</code> tĩnh</strong>. Rollup chỉ tự chia theo màn khi
+      có <code>import()</code> động để làm điểm cắt.</p>
+      <p>Và tôi sẽ bỏ luật gộp-hết-node_modules ngay khi bắt đầu lazy route, vì lúc đó nó chuyển từ vô hại
+      sang có hại: nó kéo thư viện của những màn đã lazy về lại chunk nối tĩnh với entry."</p>
+    </div>
+  `,
+  followups: [
+    { q: 'Vậy tách <code>vendor</code> để cache có còn đáng làm không?',
+      a: '<p>Đáng, nhưng <strong>đừng gộp hết vào một cục</strong> — và đây là chỗ nhiều dự án làm nửa vời.</p><p>Một <code>vendor</code> duy nhất có nhược điểm ngược đời: chỉ cần nâng <em>một</em> thư viện nhỏ là cả 715 KB đổi hash, người dùng tải lại toàn bộ. Càng gộp to thì cache càng dễ vỡ.</p><p>Cách hợp lý hơn: tách theo <strong>nhịp thay đổi</strong>. React với react-dom gần như không bao giờ đổi trong một quý — cho một chunk. Đám thư viện UI đổi vài tuần một lần — chunk khác. Phần còn lại để Rollup tự lo. Vite 5 cũng đã tự chia node_modules khá hợp lý khi bạn <strong>không</strong> viết <code>manualChunks</code> và <strong>có</strong> điểm cắt động.</p><p>Nói cách khác: <code>manualChunks</code> là công cụ để nói <em>"những thứ này đổi cùng nhịp nhau"</em>, không phải để nói <em>"tất cả thư viện là một loại"</em>.</p>' },
+    { q: 'Chênh 9 KB khi gộp lại — vì sao gộp mà còn to hơn?',
+      a: '<p>Không có gì bí ẩn, và cũng không đáng để tâm — nhưng hiểu thì tốt.</p><p>Khi chia chunk, Rollup phải sinh thêm <strong>bộ khung</strong> cho mỗi file: khai báo import/export giữa các chunk, bảng ánh xạ, đôi chỗ lặp lại hàm trợ giúp nhỏ. Gộp một file thì mất đám khung đó — lẽ ra phải <em>nhỏ hơn</em>.</p><p>Chiều ngược lại mạnh hơn: trong một file khổng lồ, bộ rút gọn tên biến phải cấp phát tên ngắn (<code>a</code>, <code>b</code>, <code>aa</code>…) cho nhiều biến hơn trong cùng một phạm vi, nên tên trung bình <strong>dài ra</strong>. Mỗi biến dài thêm một ký tự, nhân với hàng vạn lần xuất hiện, ra đúng cỡ vài KB.</p><p>Bài học thật nằm ở chỗ khác: <strong>chênh lệch dưới 1% thì đừng rút ra kết luận gì cả.</strong> Nếu tôi đi kể "xoá luật thì nặng thêm 9 KB" như một phát hiện thì đó là đọc nhiễu thành tín hiệu. Kết luận đúng là: <em>không đổi</em>.</p>' },
+    { q: 'Cái gì thì <strong>thật sự</strong> làm lần tải đầu nhỏ đi, xếp theo hiệu quả?',
+      a: '<p>Theo thứ tự ăn tiền nhất trước:</p><ul><li><strong>Cắt đường <code>import</code> tĩnh</strong> — lazy theo màn. Đây là thứ duy nhất làm <em>giảm hẳn</em> số byte, vì nó đổi tập module phải có mặt ở giai đoạn 1. Mọi thứ còn lại chỉ là tối ưu quanh mép.</li><li><strong>Vứt bớt thư viện.</strong> Nhàm chán nhưng hiệu quả nhất tính trên công bỏ ra: một thư viện ngày tháng nặng bằng cả chục màn hình code của bạn. Xem <code>rollup-plugin-visualizer</code> một lần là biết ai đang chiếm chỗ.</li><li><strong>Nén brotli ở tầng phục vụ</strong> — thường nhỏ hơn gzip chừng 15%, và chỉ là một dòng cấu hình nginx/CDN.</li><li><strong>Bỏ polyfill cho trình duyệt không còn ai dùng</strong> — chỉnh <code>build.target</code> cho khớp thực tế người dùng.</li></ul><p>Và nhớ thứ tự đúng của việc: <strong>đo trước, sửa sau.</strong> Mở <code>dist/index.html</code> cộng entry + mọi <code>modulepreload</code> + mọi stylesheet — con số đó là sự thật, và nó cho biết nên đụng vào đâu trước.</p>' },
+  ],
+},
+
 /* ---------------------------------------------------------- KIẾN TRÚC */
 {
   id: 'kt-01',
