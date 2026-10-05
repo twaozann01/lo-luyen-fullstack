@@ -4479,6 +4479,80 @@ Idempotency-Key: 8f3c1a9e-4b22-4d7e-9c10-5a6b7c8d9e0f
   ],
 },
 
+{
+  id: 'be-11',
+  section: 'be',
+  topic: 'Xác thực',
+  level: 'khó',
+  multi: true,
+  q: 'Người dùng mở <strong>hai tab</strong> Marketplace. Access token hết hạn, cả hai tab cùng nhận 401 <strong>cùng lúc</strong> và cùng gọi <code>POST /auth/refresh</code> với <strong>cùng một cookie</strong>. Đoạn dưới là code thật của <code>refresh()</code>. Nhận định nào <strong>đúng</strong>?',
+  code: `async refresh(userId: string, presentedToken: string): Promise&lt;Tokens&gt; {
+  const stored = await this.redis.get(&#96;rt:\${userId}&#96;);          // ① đọc
+  if (!stored || stored !== presentedToken) throw new UnauthorizedException(...);
+  const user = await this.prisma.user.findUnique(...);
+  return this.issueTokens(user);                                  // ② ký cặp mới
+}                                                                 //    rồi redis.set(rt:userId, mới)
+
+// FE: let isRefreshing = false;   // biến này nằm trong MỖI tab, không dùng chung`,
+  options: [
+    { id: 'a', text: 'Cả hai request có thể cùng qua được bước kiểm <code>stored !== presentedToken</code> (vì cả hai đọc Redis trước khi bên nào kịp ghi), đều được cấp cặp token mới, và lệnh <code>set</code> đến sau ghi đè lệnh trước: <strong>cookie và Redis có thể lệch nhau</strong>, lần refresh kế tiếp bị 401 và người dùng bị đăng xuất oan' },
+    { id: 'b', text: 'Redis chạy đơn luồng nên cặp <code>get</code> rồi <code>set</code> này là nguyên tử, không thể có tranh chấp' },
+    { id: 'c', text: 'Cách sửa đúng là làm bước &#34;so với giá trị đang lưu rồi thay bằng giá trị mới&#34; thành <strong>một bước nguyên tử</strong> (<em>compare-and-swap</em>) bằng script Lua, để đúng một request thắng' },
+    { id: 'd', text: 'Nếu thêm <strong>reuse detection</strong> theo kiểu ngây thơ (token cũ bị đưa lại thì huỷ cả phiên), thì chính kịch bản hai tab này sẽ <strong>đăng xuất người dùng hợp lệ</strong>; muốn tránh phải có <em>khoảng ân hạn</em> ngắn cho token vừa bị thay, hoặc giữ cho chỉ một tab được phép refresh' },
+    { id: 'e', text: 'Biến <code>isRefreshing</code> trong <code>axios.config.ts</code> đã chặn được tình huống này, vì nó gộp các lần refresh lại thành một' },
+    { id: 'f', text: 'Với thiết kế hiện tại (chỉ nhớ token <strong>mới nhất</strong>), server không thể phân biệt &#34;token cũ từng hợp lệ bị dùng lại&#34; với &#34;token bịa&#34;: cả hai chỉ nhận 401 như nhau; muốn phân biệt phải nhớ thêm các token đã dùng' },
+    { id: 'g', text: 'Nên lưu <strong>giá trị băm</strong> (ví dụ SHA-256) của refresh token trong Redis thay vì nguyên văn, để nếu Redis bị lộ thì kẻ tấn công không có token dùng được ngay' },
+    { id: 'h', text: 'Để cho phép nhiều thiết bị cùng đăng nhập chỉ cần tăng TTL của key <code>rt:{userId}</code>' },
+  ],
+  correct: ['a', 'c', 'd', 'f', 'g'],
+  why: `
+    <div class="script">
+      <p><strong>&#34;Đọc rồi mới quyết định ghi&#34; là lỗi tranh chấp (check-then-act) nếu hai bước đó không nằm trong một khối không ai chen vào được. Xoay vòng refresh token mà không nguyên tử thì hai request hợp lệ đồng thời sẽ giẫm lên nhau.</strong></p>
+      <p>Đây là <strong>cùng một bệnh</strong> với &#34;tấm vé cuối cùng&#34; ở be-06 (hai người cùng thấy còn vé), chỉ khác chỗ: không phải database mà là Redis.</p>
+    </div>
+
+    <h4>Quầy lễ tân đổi thẻ (nối be-08)</h4>
+    <p>Ở be-08, refresh token là <em>thẻ ở quầy lễ tân</em>: quầy có sổ ghi &#34;thẻ hiện hành của khách A là số 5&#34;. Khách đưa thẻ 5, lễ tân kiểm sổ thấy khớp, thu thẻ cũ và phát thẻ 6, ghi sổ &#34;A: thẻ 6&#34;.</p>
+    <p>Giờ có <strong>hai người cầm cùng thẻ 5</strong> (hai tab) tới <em>đúng lúc</em> hai quầy khác nhau. Cả hai lễ tân cùng nhìn sổ, cùng thấy &#34;A: thẻ 5&#34;, cùng gật đầu. Hai thẻ mới (6 và 7) được phát ra, nhưng sổ chỉ nhớ cái ghi sau. Một người cầm thẻ mà sổ không biết, lần sau đưa ra là bị từ chối.</p>
+    <p>Lỗi không nằm ở lễ tân nào làm sai. Lỗi nằm ở chỗ <strong>&#34;nhìn sổ&#34; và &#34;ghi sổ&#34; là hai việc tách rời</strong>.</p>
+
+    <h4>Chấm từng ý</h4>
+    <ul>
+      <li><strong>a. ĐÚNG.</strong> Hai request cùng <code>get</code> → cùng thấy <code>stored === presentedToken</code> → cùng ký cặp mới → hai lệnh <code>set</code> nối tiếp nhau. Redis chỉ giữ cái ghi sau. Mỗi tab nhận cặp token của mình; cookie (dùng chung) và Redis có thể kết thúc ở hai giá trị khác nhau, nên lần refresh kế tiếp có thể bị 401 và <code>logout()</code> chạy. Người dùng thấy &#34;tự nhiên bị đăng xuất&#34; mà không có ai tấn công, khó chẩn đoán vì chỉ xảy ra khi trùng thời điểm.</li>
+      <li><strong>b. SAI.</strong> Mỗi <em>lệnh</em> Redis là nguyên tử, nhưng một <em>chuỗi</em> lệnh thì không. Giữa <code>get</code> và <code>set</code> còn có cả việc truy vấn Postgres và ký JWT, tức là cửa sổ tranh chấp khá rộng, chứ không chỉ vài micro giây.</li>
+      <li><strong>c. ĐÚNG.</strong> Gói &#34;nếu giá trị hiện tại bằng X thì thay bằng Y&#34; thành <strong>một</strong> bước. Với Redis dùng script Lua (chạy trọn vẹn không ai chen vào): đúng một request đổi được, request còn lại thấy sổ đã đổi và bị từ chối. Ký token mới <em>trước</em> khi gọi script, nếu thua thì bỏ cặp vừa ký. Lưu ý: bên thua vẫn là người dùng hợp lệ, nên chỉ nguyên tử thôi chưa đủ cho trải nghiệm tốt (xem d).</li>
+      <li><strong>d. ĐÚNG.</strong> Đây là ý sâu nhất của bài. Reuse detection coi &#34;thẻ cũ bị đưa lại&#34; là dấu hiệu bị trộm. Nhưng trong kịch bản hai tab (hoặc mạng chập chờn, client tự gửi lại), <em>người dùng thật</em> cũng đưa thẻ cũ lại. Phải phân biệt <strong>trộm</strong> với <strong>trùng thời điểm</strong>: cho một khoảng ân hạn vài chục giây (chấp nhận thẻ vừa bị thay nếu mới thay xong), hoặc chặn từ phía client để chỉ một tab refresh tại một thời điểm.</li>
+      <li><strong>e. SAI.</strong> <code>isRefreshing</code> là biến JS nằm trong <em>từng tab</em>, mỗi tab có bản riêng. Nó gộp được nhiều 401 trong <strong>cùng một tab</strong>, không gộp được giữa hai tab. Muốn gộp giữa các tab phải dùng thứ dùng chung: Web Locks (<code>navigator.locks</code>) hoặc <code>BroadcastChannel</code>.</li>
+      <li><strong>f. ĐÚNG.</strong> Redis chỉ nhớ token <em>mới nhất</em>, nên một token cũ đã xoay vòng và một chuỗi bịa đều chỉ là &#34;không khớp&#34; → 401 chung chung. Tín hiệu quý nhất (token cũ quay lại, nghĩa là có thể có hai bên cùng giữ) bị bỏ phí. Muốn dùng được phải nhớ thêm các token đã dùng (theo từng &#34;họ&#34; token), xem câu hỏi phụ ở be-08.</li>
+      <li><strong>g. ĐÚNG.</strong> Refresh token trong Redis đang là <em>nguyên văn</em>: ai đọc được Redis (backup, log, lỗ hổng) là có token dùng ngay. Lưu băm thì server vẫn so được (băm token trình lên rồi so), mà dữ liệu rò ra không dùng được. Cùng nguyên tắc như lưu băm mật khẩu, nhưng ở đây dùng băm nhanh (SHA-256) là đủ vì token đã là chuỗi ngẫu nhiên dài, không cần băm chậm như bcrypt.</li>
+      <li><strong>h. SAI.</strong> Key <code>rt:{userId}</code> chỉ có <strong>một ô</strong> cho mỗi người. Đăng nhập thêm thiết bị thì ghi đè và đá thiết bị cũ. Muốn nhiều phiên phải có <strong>một khoá cho mỗi phiên</strong> (ví dụ <code>rt:{userId}:{familyId}</code>), kèm một tập để liệt kê và &#34;đăng xuất mọi thiết bị&#34;. TTL không liên quan.</li>
+    </ul>
+
+    <div class="flag"><p><strong>Điều đã đọc trong repo:</strong> <code>refresh()</code> làm <code>redis.get</code> → so sánh → <code>issueTokens</code> (ký rồi <code>redis.set</code>) là các bước rời nhau; <code>logout()</code> chỉ <code>del</code> khoá <code>rt:{userId}</code>; FE có <code>isRefreshing</code> nhưng là biến của riêng từng tab. Mình <strong>chưa chạy thử</strong> kịch bản hai tab để tái hiện lỗi; phần phân tích dựa trên việc đọc code, nên hãy coi a là suy luận chứ chưa phải quan sát.</p></div>
+
+    <div class="script">
+      <p><strong>Câu chốt khi phỏng vấn:</strong> &#34;Xoay vòng refresh token là bước đọc-rồi-ghi, nên phải nguyên tử, nếu không hai tab refresh cùng lúc sẽ giẫm lên nhau (check-then-act). Em dùng compare-and-swap bằng Lua. Và nếu thêm reuse detection thì phải có khoảng ân hạn, vì người dùng thật cũng đưa token cũ khi trùng thời điểm; còn phân biệt được trộm hay trùng là nhờ nhớ cả họ token đã dùng.&#34;</p>
+    </div>
+
+    <h4>Mối nối với các bài khác</h4>
+    <ul>
+      <li><strong>be-06:</strong> cùng bệnh check-then-act. Ở đó chữa bằng điều kiện trong câu <code>UPDATE ... WHERE</code>; ở đây chữa bằng compare-and-swap ở Redis.</li>
+      <li><strong>be-09 (idempotency):</strong> request bị gửi lại là chuyện thường; hệ thống phải chịu được nó mà không hỏng.</li>
+      <li><strong>be-08 và fs-04:</strong> đây là phần &#34;đào sâu&#34; của thiết kế hai token đã học, đi vào chỗ nó hở khi chạy thật.</li>
+    </ul>
+  `,
+  followups: [
+    { q: 'Viết compare-and-swap bằng Lua cho Redis thế nào?',
+      a: '<p>Script chạy trọn vẹn trong Redis, không lệnh nào của client khác chen vào giữa:</p><pre><code>local cur = redis.call("GET", KEYS[1])\nif cur == ARGV[1] then\n  redis.call("SET", KEYS[1], ARGV[2], "EX", ARGV[3])\n  return 1\nend\nreturn 0</code></pre><p>Gọi bằng <code>EVAL</code> với <code>KEYS[1] = rt:{userId}</code>, <code>ARGV[1]</code> = token trình lên, <code>ARGV[2]</code> = token mới, <code>ARGV[3]</code> = TTL giây. Trả 1 là thắng, 0 là thua. Ký token mới <strong>trước</strong> khi gọi; thua thì bỏ. Nếu lưu băm thì <code>ARGV[1]</code> và <code>ARGV[2]</code> là hai giá trị băm.</p>' },
+    { q: 'Khoảng ân hạn (grace window) thiết kế cụ thể thế nào?',
+      a: '<p>Ý tưởng: khi xoay vòng, đừng vứt token cũ ngay. Giữ nó thêm một lúc rất ngắn:</p><pre><code>rt:{familyId} = { current: T6, previous: T5, rotatedAt: ... }</code></pre><ul><li>Trình <code>current</code> → hợp lệ, xoay vòng, <code>previous</code> = token vừa thay.</li><li>Trình <code>previous</code> <strong>và</strong> còn trong ~10–30 giây kể từ <code>rotatedAt</code> → coi là trùng thời điểm: <strong>không báo động</strong>, trả lại đúng <code>current</code> hiện hành (hoặc cặp mới nhất).</li><li>Trình <code>previous</code> nhưng <strong>quá hạn ân hạn</strong>, hoặc token cũ hơn nữa → báo động reuse, huỷ cả họ.</li></ul><p>Đánh đổi: ân hạn càng dài càng tiện cho người dùng thật nhưng càng cho kẻ trộm thêm thời gian. Vài chục giây thường là điểm cân bằng.</p>' },
+    { q: 'Chặn từ phía client thì làm sao để chỉ một tab refresh?',
+      a: '<p>Dùng thứ chia sẻ được giữa các tab cùng origin:</p><ul><li><strong>Web Locks API</strong>: <code>navigator.locks.request("refresh", async () =&gt; { ... })</code>. Chỉ một tab giữ khoá tại một thời điểm; tab sau vào sau, <em>kiểm lại xem access token đã mới chưa</em> trước khi gọi refresh, nếu đã có thì dùng luôn.</li><li><strong>BroadcastChannel</strong>: tab nào refresh xong thì phát token mới cho các tab khác, các tab còn lại cập nhật store thay vì tự gọi.</li></ul><p>Cách này chữa gốc ở phía client, nhưng <strong>không thay được</strong> việc làm server nguyên tử: client có thể lỗi, mạng có thể gửi lặp, và có kẻ tấn công không chịu quy ước của client. Hai phía bổ sung nhau.</p>' },
+    { q: 'Cho phép nhiều thiết bị thì sửa thiết kế Redis thế nào?',
+      a: '<p>Thay một ô <code>rt:{userId}</code> bằng <strong>một khoá cho mỗi phiên (họ token)</strong>:</p><pre><code>rt:{userId}:{familyId} = giá trị băm token hiện hành  (TTL 7 ngày)\nsessions:{userId}      = SET các familyId đang sống</code></pre><ul><li>Đăng nhập: tạo <code>familyId</code> mới, thêm vào tập.</li><li>Refresh: nhận <code>familyId</code> từ trong JWT refresh, compare-and-swap trên đúng khoá của họ đó.</li><li>Đăng xuất một thiết bị: xoá một khoá. <strong>Đăng xuất mọi thiết bị</strong> hay <strong>đổi mật khẩu</strong>: duyệt tập <code>sessions:{userId}</code> xoá hết.</li></ul><p>Được thêm một thứ: có thể hiện danh sách &#34;thiết bị đang đăng nhập&#34; cho người dùng tự thu hồi, như các ứng dụng lớn vẫn làm.</p>' },
+  ],
+},
+
 /* ---------------------------------------------------------- FS */
 {
   id: 'fs-01',
@@ -4942,6 +5016,98 @@ contentSecurityPolicy: { directives: {
       a: '<p>DOMPurify <strong>phân tích HTML thành cây</strong> rồi chỉ giữ lại thẻ và thuộc tính trong danh sách trắng, bỏ mọi thứ còn lại (<code>onerror</code>, <code>javascript:</code>…). Dùng đúng ở <em>chỗ hiển thị</em>: <code>__html: DOMPurify.sanitize(bio)</code>.</p><p>Không nên tự viết: HTML có quá nhiều cách mã hoá và quá nhiều quirk của trình duyệt (thẻ lồng sai, ký tự lạ, đa byte). Bộ lọc bằng regex luôn bị vượt qua, trong khi DOMPurify được cộng đồng soi và vá liên tục. Nếu chỉ cần in đậm/xuống dòng thì cách rẻ nhất vẫn là <strong>không cho HTML</strong>, dùng markdown rồi render qua thư viện đã sanitize.</p>' },
     { q: 'XSS xảy ra rồi thì refresh token trong cookie <code>httpOnly</code> có cứu được gì không?',
       a: '<p>Có, nhưng cứu <strong>một phần</strong>:</p><ul><li><strong>Cứu được</strong>: kẻ tấn công không mang được refresh token đi. Nó không dùng được trên máy của nó, và khi nạn nhân đóng tab hay đăng xuất thì quyền đó mất.</li><li><strong>Không cứu được</strong>: trong lúc tab còn mở, mã độc vẫn gọi API nhân danh nạn nhân (đổi thông tin, tạo đơn, rút tiền nếu API cho phép), và có thể gọi <code>/auth/refresh</code> để xin access token mới.</li></ul><p>Vì thế các hành động rủi ro cao (rút tiền, đổi mật khẩu) nên đòi <strong>xác thực lại</strong> (nhập mật khẩu / OTP), không dựa vào &#34;đã đăng nhập&#34;. Phòng thủ nhiều lớp: không để XSS xảy ra, nếu xảy ra thì hạn chế việc nó làm được.</p>' },
+  ],
+},
+
+{
+  id: 'fs-04',
+  section: 'fs',
+  topic: 'Lưu token',
+  level: 'khó',
+  multi: true,
+  q: 'Marketplace lưu <strong>access token trong RAM</strong> (Zustand, gửi bằng header <code>Bearer</code>) và <strong>refresh token trong cookie <code>httpOnly</code></strong> (<code>SameSite=Lax</code>, <code>path=/api/v1/auth</code>). Có người hỏi: &#34;sao không lưu cả hai vào <code>localStorage</code> cho đơn giản, hoặc cả hai vào cookie cho an toàn?&#34;. Nhận định nào <strong>đúng</strong>?',
+  code: `// FE — axios.config.ts
+apiClient.interceptors.request.use((config) =&gt; {
+  const token = useAuthStore.getState().accessToken;      // lấy từ RAM
+  if (token) config.headers.Authorization = &#96;Bearer \${token}&#96;;
+  return config;
+});
+// 401 → POST /auth/refresh (cookie tự đính kèm) → lấy access mới → thử lại
+
+// BE — auth.controller.ts
+res.cookie(&#39;refreshToken&#39;, token, {
+  httpOnly: true, sameSite: &#39;lax&#39;, path: &#39;/api/v1/auth&#39;,
+  secure: production, maxAge: refreshTtlSeconds * 1000,
+});`,
+  options: [
+    { id: 'a', text: 'Để <strong>refresh token</strong> trong <code>localStorage</code> là lựa chọn tệ nhất về XSS: script đọc được, mang đi dùng ở máy khác, và token sống nhiều ngày nên kẻ tấn công có thời gian dài' },
+    { id: 'b', text: 'Gửi access token bằng header <code>Bearer</code> (do JS tự gắn) nghĩa là trình duyệt <strong>không tự đính kèm</strong> nó vào request giả mạo từ trang lạ, nên các API thường không dính CSRF' },
+    { id: 'c', text: 'Đã có <code>httpOnly</code> thì XSS coi như vô hại, vì script không còn cách nào dùng được token' },
+    { id: 'd', text: 'Nếu chuyển <strong>cả access token</strong> vào cookie thì mọi API đều có cookie tự gửi theo, nên phải bổ sung biện pháp chống CSRF (SameSite chặt, CSRF token…) cho toàn bộ API chứ không chỉ <code>/auth/refresh</code>' },
+    { id: 'e', text: 'Access token ở RAM bị mất khi tải lại trang; đó là <strong>cái giá được chấp nhận</strong>, và <code>useBootstrapAuth</code> gọi <code>/auth/refresh</code> lúc khởi động để lấy lại, chứ không phải lỗi' },
+    { id: 'f', text: '<code>SameSite=Lax</code> chặn hoàn toàn CSRF, nên với cookie này không cần nghĩ thêm gì' },
+    { id: 'g', text: 'Mô hình <strong>BFF</strong> (server trung gian giữ token, trình duyệt chỉ có cookie phiên <code>httpOnly</code>) giúp token <strong>không bao giờ tới trình duyệt</strong>; nhưng XSS vẫn có thể gọi API <em>thông qua</em> BFF nhân danh nạn nhân' },
+    { id: 'h', text: 'Access token chỉ sống 15 phút nên kẻ tấn công có lấy được cũng vô hại, vì nó sẽ hết hạn' },
+  ],
+  correct: ['a', 'b', 'd', 'e', 'g'],
+  why: `
+    <div class="script">
+      <p><strong>Hai kẻ tấn công kéo ngược nhau: XSS sợ nơi lưu mà JS ĐỌC được; CSRF sợ nơi lưu mà trình duyệt TỰ GỬI. Không có chỗ lưu nào né được cả hai, nên chọn nơi lưu chỉ để GIẢM THIỆT HẠI, không phải để chặn tấn công.</strong></p>
+      <p>Vì thế câu hỏi đúng không phải &#34;chỗ nào an toàn&#34; mà là <strong>&#34;mình sợ cái nào hơn, và cái giá của mỗi lựa chọn là gì&#34;</strong>.</p>
+    </div>
+
+    <h4>Chìa khoá, két sắt và phiếu gửi xe</h4>
+    <ul>
+      <li><strong><code>localStorage</code></strong> = chìa khoá để trên bàn: ai vào phòng (script chạy trong trang) cũng cầm đi được, và cầm đi rồi thì dùng ở đâu cũng được.</li>
+      <li><strong>Cookie <code>httpOnly</code></strong> = chìa khoá nằm trong két mà script không mở được. Nhưng kẻ trong phòng vẫn có thể <em>nhờ nhân viên mở két giúp</em> (gọi API, cookie tự đính kèm), chỉ là không mang chìa ra ngoài được.</li>
+      <li><strong>BFF</strong> = trình duyệt chỉ cầm một <em>phiếu gửi xe</em>; chìa thật nằm trong tủ của bãi xe (server). Kẻ trộm lấy phiếu cũng không có chìa, nhưng vẫn có thể nhờ bãi xe lấy xe giúp nếu đang ở trong phòng.</li>
+    </ul>
+
+    <h4>Chấm từng ý</h4>
+    <ul>
+      <li><strong>a. ĐÚNG.</strong> <code>localStorage</code> đọc được bằng JS, mà refresh token lại là token <em>dài hạn</em> (7 ngày), nên một lần XSS đủ để kẻ tấn công mang nó đi và dùng ở máy mình. Đây là lý do refresh token không nên nằm ở đó.</li>
+      <li><strong>b. ĐÚNG.</strong> CSRF hoạt động nhờ trình duyệt <em>tự</em> đính kèm cookie. Header <code>Authorization</code> do code của mình gắn nên trang lạ không làm được. Vì vậy các API dùng <code>Bearer</code> gần như miễn nhiễm CSRF; chỗ duy nhất còn dùng cookie là <code>/auth/*</code>, và đã có <code>SameSite</code> + <code>path</code> bảo vệ.</li>
+      <li><strong>c. SAI.</strong> Như fs-03: <code>httpOnly</code> chặn việc <em>đánh cắp</em> cookie, không chặn việc script <em>làm thay</em> nạn nhân trong lúc tab còn mở. Nó giảm thiệt hại, không biến XSS thành vô hại.</li>
+      <li><strong>d. ĐÚNG.</strong> Đây là cái giá của &#34;cả hai vào cookie&#34;: mọi request tới API đều kèm cookie tự động, nên CSRF thành mối lo cho <em>mọi</em> endpoint thay đổi dữ liệu. Phải thêm SameSite chặt và/hoặc CSRF token. Được: không token nào lộ ra cho JS. Mất: bề mặt CSRF lớn hơn, và khó dùng chung với mobile.</li>
+      <li><strong>e. ĐÚNG.</strong> RAM mất khi reload. Đó là <em>đánh đổi có chủ đích</em>: lấy sự an toàn của việc không lưu lâu dài, trả bằng một lần gọi refresh lúc khởi động. Nên hiểu đây là tính năng chứ không phải lỗi cần &#34;sửa&#34; bằng cách chép access token ra <code>localStorage</code>.</li>
+      <li><strong>f. SAI.</strong> <code>Lax</code> vẫn gửi cookie khi người dùng <em>điều hướng</em> (bấm link) tới site bằng GET. Nếu có endpoint GET làm thay đổi dữ liệu thì vẫn bị lợi dụng. Nó cũng không chặn các tấn công xuất phát từ cùng &#34;site&#34; (ví dụ một subdomain bị chiếm). <code>Strict</code> chặt hơn; và <code>SameSite</code> chỉ là một lớp, không phải cả hệ thống.</li>
+      <li><strong>g. ĐÚNG.</strong> BFF là mô hình được khuyên cho ứng dụng trình duyệt cần mức bảo mật cao nhất, vì token nằm ở server. Nhưng nó không thần kỳ: nếu có XSS thì script vẫn gọi API qua BFF được, vì cookie phiên vẫn tự đính kèm. Nó chỉ <em>ngăn token bị mang đi</em>.</li>
+      <li><strong>h. SAI.</strong> Hai lỗ hổng: (1) 15 phút là đủ để gây thiệt hại nếu API cho phép việc nguy hiểm; (2) quan trọng hơn, kẻ tấn công đang ở <em>trong</em> trang nên cứ gọi <code>/auth/refresh</code> để xin access token mới, 15 phút không phải rào cản. TTL ngắn giúp với token bị <em>lộ ra ngoài</em> (log, mạng), không giúp với XSS.</li>
+    </ul>
+
+    <h4>Bảng tổng hợp</h4>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Cách lưu</th><th>XSS lấy cắp token</th><th>CSRF</th><th>Cái giá</th></tr></thead>
+      <tbody>
+        <tr><td><code>localStorage</code> cả hai</td><td>Tệ nhất</td><td>Không dính</td><td>Một lần XSS là mất token dài hạn</td></tr>
+        <tr><td>Access RAM + refresh cookie (repo này)</td><td>Tốt</td><td>Chỉ <code>/auth/*</code>, đã có SameSite</td><td>Reload phải gọi refresh</td></tr>
+        <tr><td>Cả hai trong cookie</td><td>Rất tốt</td><td>Dính cho mọi API</td><td>Phải thêm CSRF token; khó với mobile</td></tr>
+        <tr><td>BFF</td><td>Tốt nhất</td><td>Cần chống cho cookie phiên</td><td>Thêm một lớp hạ tầng</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="flag"><p><strong>Điều đã kiểm trong repo:</strong> access token nằm trong Zustand (không <code>persist</code>), gắn bằng interceptor; refresh token ở cookie <code>httpOnly</code>, <code>SameSite=Lax</code>, <code>path=/api/v1/auth</code>; <code>/auth/refresh</code> được gọi bằng <code>withCredentials</code>. Mobile/Zalo (header <code>x-client-type</code>) nhận refresh token trong body và tự lưu, <strong>chỉ khi request không kèm cookie web</strong>, để XSS trên web không ép được server nhả token.</p></div>
+
+    <div class="script">
+      <p><strong>Câu chốt khi phỏng vấn:</strong> &#34;Em để access token ngắn hạn trong bộ nhớ và refresh token trong cookie httpOnly. Cookie httpOnly để XSS không lấy cắp được token dài hạn; access trong RAM và gửi bằng header để API không dính CSRF. Cách an toàn nhất là BFF, nhưng em chọn cách này vì có cả mobile dùng chung backend. XSS thì không nơi lưu nào chặn được nên em phòng thủ nhiều lớp: không dùng innerHTML, kiểm URL, CSP chặt, và đòi xác thực lại với thao tác nhạy cảm.&#34;</p>
+    </div>
+
+    <h4>Mối nối với các bài khác</h4>
+    <ul>
+      <li><strong>fs-01:</strong> cùng đánh đổi cookie ↔ localStorage, nhìn từ phía CSRF. Bài này tổng hợp cả hai phía.</li>
+      <li><strong>fs-03:</strong> bài đó nói XSS vẫn làm thay nạn nhân; bài này nói nơi lưu quyết định <em>thiệt hại</em> ra sao.</li>
+      <li><strong>be-08:</strong> thiết kế hai token (access ngắn, refresh có sổ ở Redis) chính là để đổi sự thuận tiện lấy khả năng thu hồi.</li>
+    </ul>
+  `,
+  followups: [
+    { q: 'Sao không bỏ access token, chỉ dùng một cookie phiên cho đơn giản?',
+      a: '<p>Hoàn toàn hợp lý, và với một web app một backend thì <strong>đó thường là lựa chọn đúng</strong>: cookie <code>httpOnly</code> chứa session id, mọi ý nghĩa nằm ở server. Thu hồi tức thì, không có chuyện token cũ sống thêm 15 phút.</p><p>Hai lý do repo này chọn hai token: (1) có <strong>mobile và Zalo</strong> cùng dùng backend, mà họ không có cookie trình duyệt, nên cần token cầm tay; (2) giữ cho API không phải tra Redis ở mỗi request. Khi chỉ có web thì cân nhắc session cookie + <code>SameSite</code> + CSRF token trước, rồi mới nghĩ tới JWT.</p>' },
+    { q: 'BFF hoạt động cụ thể thế nào?',
+      a: '<p>Thêm một server nhỏ đứng giữa trình duyệt và API chính:</p><ul><li>Trình duyệt đăng nhập qua BFF; BFF lấy access/refresh token từ API chính và <strong>giữ trong bộ nhớ hoặc Redis của nó</strong>.</li><li>Trình duyệt chỉ nhận <strong>một cookie phiên</strong> <code>httpOnly</code>, không có token nào.</li><li>Mỗi lần trình duyệt gọi BFF, BFF tra phiên, gắn <code>Bearer</code> đúng của người đó rồi chuyển tiếp tới API; hết hạn thì BFF tự refresh.</li></ul><p>Được: token không bao giờ nằm trong JS. Mất: thêm một thành phần phải vận hành, và cookie phiên lại phải chống CSRF. Hợp với đội có hạ tầng, hơi thừa cho dự án nhỏ.</p>' },
+    { q: 'SameSite Strict, Lax và None khác nhau thế nào?',
+      a: '<ul><li><strong>Strict</strong>: cookie chỉ gửi khi request xuất phát từ <em>cùng site</em>. Bấm link từ trang khác vào cũng không gửi, nên lần đầu vào có thể thấy như chưa đăng nhập.</li><li><strong>Lax</strong> (mặc định của trình duyệt hiện đại): gửi khi điều hướng cấp cao bằng GET (bấm link), không gửi trong request ngầm từ trang lạ (<code>fetch</code>, <code>&lt;form&gt;</code> POST…).</li><li><strong>None</strong>: luôn gửi, kể cả cross-site; bắt buộc đi kèm <code>Secure</code>. Chỉ dùng khi cần thật (FE và API khác site).</li></ul><p>Với cookie refresh chỉ dùng cho XHR của chính app (không bao giờ là điều hướng), <strong>Strict là hợp lý hơn</strong> nếu FE và API cùng site. Lưu ý: &#34;site&#34; là domain đăng ký (như <code>example.com</code>), không phải origin.</p>' },
+    { q: 'Còn app mobile thì lưu token ở đâu?',
+      a: '<p>Không dùng cookie của trình duyệt, nên refresh token phải do app tự giữ. Chỗ đúng là <strong>kho lưu trữ bảo mật của hệ điều hành</strong>: Keychain (iOS) và Keystore (Android). Tránh lưu trong kho thường như AsyncStorage / SharedPreferences, vì file đó đọc được trên máy đã root hoặc qua bản sao lưu.</p><p>Repo này đã tách luồng đúng hướng: header <code>x-client-type</code> khác web mới nhận refresh token trong body, và chỉ khi request <strong>không</strong> kèm cookie phiên web, để XSS trên web không ép server nhả token.</p>' },
   ],
 },
 
