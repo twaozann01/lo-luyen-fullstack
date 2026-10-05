@@ -4854,6 +4854,97 @@ const rows = await this.prisma.$queryRawUnsafe(
   ],
 },
 
+{
+  id: 'fs-03',
+  section: 'fs',
+  topic: 'XSS',
+  level: 'khó',
+  multi: true,
+  q: 'Marketplace có nhiều chỗ người này gõ chữ để người khác xem (bio thợ, ghi chú đơn, tên chứng chỉ). FE là React; access token nằm trong biến Zustand, refresh token nằm trong cookie <code>httpOnly; SameSite=Lax</code>. Một đồng nghiệp đề xuất hai thay đổi dưới đây. Nhận định nào <strong>đúng</strong>?',
+  code: `// ① HIỆN TẠI — hiển thị bio thợ
+&lt;p&gt;{data.bio}&lt;/p&gt;
+
+// ② ĐỀ XUẤT A — &#34;cho thợ in đậm, xuống dòng cho đẹp&#34;
+&lt;div dangerouslySetInnerHTML={{ __html: data.bio }} /&gt;
+
+// ③ ĐỀ XUẤT B — &#34;cho thợ dán link website của mình&#34;
+&lt;a href={data.website} target=&#34;_blank&#34;&gt;Website&lt;/a&gt;
+
+// ④ main.ts (backend)
+contentSecurityPolicy: { directives: {
+  defaultSrc: [&#34;&#39;self&#39;&#34;],
+  scriptSrc:  [&#34;&#39;self&#39;&#34;, &#34;&#39;unsafe-inline&#39;&#34;],
+} }`,
+  options: [
+    { id: 'a', text: 'Ở ①, thợ gõ <code>&lt;script&gt;alert(1)&lt;/script&gt;</code> vào bio thì <strong>không chạy</strong>: React mặc định coi <code>{...}</code> là <strong>chữ</strong>, không phải HTML, nên chỉ hiện đúng dòng chữ đó' },
+    { id: 'b', text: 'Đề xuất A mở ra <strong>stored XSS</strong>: bio do một người gõ, được lưu lại, rồi chạy trong trình duyệt của <strong>mọi</strong> người xem hồ sơ, kể cả admin' },
+    { id: 'c', text: 'Ở A, chỉ cần chặn thẻ <code>&lt;script&gt;</code> ở phía server là an toàn, vì chỉ có <code>&lt;script&gt;</code> mới chạy được mã' },
+    { id: 'd', text: 'Ở B, dù không có thẻ <code>&lt;script&gt;</code> nào, thợ vẫn có thể nhập <code>javascript:...</code> làm &#34;website&#34; và mã chạy khi người khác <strong>bấm vào link</strong>; cần chỉ cho phép địa chỉ bắt đầu bằng <code>https://</code> hoặc <code>http://</code>' },
+    { id: 'e', text: 'Vì refresh token ở cookie <code>httpOnly</code>, XSS <strong>không đánh cắp</strong> được cookie đó bằng <code>document.cookie</code>, nhưng mã độc vẫn <strong>làm việc nhân danh nạn nhân</strong> ngay trong trang đang mở' },
+    { id: 'f', text: 'Vì access token nằm trong biến JS (không phải <code>localStorage</code>) nên XSS <strong>không</strong> đọc được nó' },
+    { id: 'g', text: 'Ở ④, <code>&#39;unsafe-inline&#39;</code> trong <code>scriptSrc</code> làm CSP gần như <strong>mất tác dụng chống XSS</strong>, vì kẻ tấn công chỉ cần chèn một đoạn script nằm ngay trong trang' },
+    { id: 'h', text: 'Chữa tận gốc cho A là <strong>escape đầu ra theo ngữ cảnh</strong>; nếu thật sự cần HTML thì lọc bằng thư viện danh sách trắng (như DOMPurify) ngay tại chỗ hiển thị, không tự viết bộ lọc' },
+  ],
+  correct: ['a', 'b', 'd', 'e', 'g', 'h'],
+  why: `
+    <div class="script">
+      <p><strong>XSS là dữ liệu người dùng bị TRÌNH DUYỆT chạy như mã. Nó cùng một gốc với SQL injection (trộn dữ liệu với lệnh), chỉ khác nơi bị đọc nhầm: database thì là SQL, trình duyệt thì là HTML/JS.</strong></p>
+      <p>Hậu quả nặng ở chỗ mã chạy với <strong>toàn bộ quyền của trang</strong>: đang đăng nhập, gọi được API, đọc được dữ liệu trên màn hình.</p>
+    </div>
+
+    <h4>Nhân viên ngân hàng và tờ ghi chú</h4>
+    <p>Trang web giống một nhân viên ngân hàng mà khách đã tin: khách đã đăng nhập nên nhân viên đang có quyền làm việc <em>thay mặt khách</em>. Một người lạ kẹp vào hồ sơ tờ ghi chú: <em>&#34;Chuyển hết tiền khách này sang tài khoản X.&#34;</em></p>
+    <ul>
+      <li>Nhân viên <strong>đọc tờ ghi chú như chữ</strong> (thông tin để hiển thị) → không sao, ai đọc cũng thấy dòng chữ kỳ cục.</li>
+      <li>Nhân viên <strong>đọc nó như chỉ thị của sếp</strong> → làm theo ngay, bằng quyền của khách.</li>
+    </ul>
+    <p>XSS là trường hợp thứ hai. Trình duyệt không biết đoạn mã đó do bạn viết hay do một người dùng gõ vào ô &#34;bio&#34;.</p>
+
+    <h4>Chấm từng ý</h4>
+    <ul>
+      <li><strong>a. ĐÚNG.</strong> Đây là lý do viết React bình thường gần như không dính XSS: <code>{...}</code> luôn được escape thành chữ. Màn hình hiện nguyên dòng <code>&lt;script&gt;...</code>, không chạy gì.</li>
+      <li><strong>b. ĐÚNG.</strong> Tên <code>dangerouslySetInnerHTML</code> đã tự cảnh báo: nó bảo React &#34;coi chuỗi này là HTML thật&#34;. Bio được <em>lưu vào database</em> rồi chạy ở trình duyệt của mọi người xem, nên là <strong>stored XSS</strong>, loại nặng nhất vì nạn nhân chỉ cần mở trang.</li>
+      <li><strong>c. SAI.</strong> Chặn <code>&lt;script&gt;</code> là danh sách đen, luôn thiếu: <code>&lt;img src=x onerror=&#34;...&#34;&gt;</code>, <code>&lt;svg onload=&#34;...&#34;&gt;</code>… thẻ nào cũng có thể mang mã qua thuộc tính sự kiện.</li>
+      <li><strong>d. ĐÚNG.</strong> Cái bẫy ít người nghĩ tới. <code>href</code> chấp nhận cả giao thức <code>javascript:</code>. Chữa bằng cách <em>kiểm giao thức</em> (chỉ nhận <code>http:</code>/<code>https:</code>) trước khi đưa vào <code>href</code>, và nên kiểm cả ở server khi lưu. Với <code>target=&#34;_blank&#34;</code> nên thêm <code>rel=&#34;noopener noreferrer&#34;</code>.</li>
+      <li><strong>e. ĐÚNG.</strong> <code>httpOnly</code> như két sắt mà script không mở được: <code>document.cookie</code> không thấy nó. Nhưng mã độc đang chạy <em>bên trong</em> trang và trình duyệt vẫn tự gửi cookie khi nó gọi API (<code>SameSite=Lax</code> không chặn request cùng site). Kẻ tấn công không mang được chìa khoá đi, nhưng <strong>ngồi ngay trong phòng và nhờ nhân viên làm việc thay</strong>. Vì vậy <code>httpOnly</code> giảm thiệt hại (không bị lấy cắp lâu dài, không dùng được trên máy khác), không biến XSS thành vô hại.</li>
+      <li><strong>f. SAI.</strong> Mã độc chạy chung môi trường JS với code của bạn, nên gọi được <code>useAuthStore.getState()</code> hoặc đơn giản là gọi <code>/auth/refresh</code> để xin access token mới (cookie tự đính kèm). Giấu trong bộ nhớ chỉ làm khó hơn một chút, không ngăn được.</li>
+      <li><strong>g. ĐÚNG.</strong> CSP là danh sách &#34;chỉ chạy script từ nguồn này&#34;. <code>&#39;unsafe-inline&#39;</code> nghĩa là &#34;cho phép cả script nằm ngay trong trang&#34;, đúng thứ XSS cần. Comment trong <code>main.ts</code> nói đúng: ở backend này (chủ yếu trả JSON và Swagger) CSP không phải tuyến phòng thủ chính. CSP có tác dụng thật là CSP của <strong>trang FE</strong>, dùng <em>nonce</em> hoặc hash thay cho <code>unsafe-inline</code>.</li>
+      <li><strong>h. ĐÚNG.</strong> Escape theo ngữ cảnh (HTML, thuộc tính, URL, JS mỗi nơi một kiểu) là cách chữa tận gốc, và React làm sẵn. Khi bắt buộc cho phép HTML (trình soạn thảo rich text) thì dùng <strong>DOMPurify</strong>: nó giữ lại thẻ trong danh sách trắng và bỏ phần còn lại. Tự viết regex lọc là chạy đua mà thua.</li>
+    </ul>
+
+    <h4>Ba loại XSS: mã đến bằng đường nào</h4>
+    <ul>
+      <li><strong>Stored:</strong> mã được <em>lưu trong database</em> (như bio ở A). Ai mở trang cũng dính.</li>
+      <li><strong>Reflected:</strong> mã nằm trong <em>đường link</em> (<code>?q=...</code>), server phản hồi nguyên văn vào trang. Nạn nhân phải bị dụ bấm link.</li>
+      <li><strong>DOM-based:</strong> lỗi nằm hoàn toàn ở <em>JS phía trình duyệt</em>, ví dụ <code>el.innerHTML = location.hash</code>. Server không hề thấy mã.</li>
+    </ul>
+    <p>Marketplace dễ dính <strong>stored</strong> nhất vì có nhiều chỗ người này gõ để người kia xem. May là React chặn mặc định; chỉ cần tránh <code>dangerouslySetInnerHTML</code> và kiểm <code>href</code>/<code>src</code> do người dùng nhập.</p>
+
+    <div class="flag"><p><strong>Điều đã kiểm trong repo:</strong> FE không có <code>dangerouslySetInnerHTML</code> hay <code>innerHTML</code> nào; access token nằm trong Zustand không <code>persist</code> (chỉ ở bộ nhớ); refresh token ở cookie <code>httpOnly</code>, <code>SameSite=Lax</code>, <code>path=/api/v1/auth</code>. Đáng chú ý: CSP ở <code>main.ts</code> có <code>&#39;unsafe-inline&#39;</code> (để Swagger chạy được), nên đừng coi nó là lớp chống XSS.</p></div>
+
+    <div class="script">
+      <p><strong>Câu chốt khi phỏng vấn:</strong> &#34;XSS là khi dữ liệu người dùng bị trình duyệt chạy như mã, nên chạy với toàn bộ quyền của trang. Cùng gốc với SQL injection: trộn dữ liệu và lệnh. Chữa bằng escape đầu ra theo ngữ cảnh (framework như React làm sẵn), không dùng <code>innerHTML</code>, kiểm giao thức của URL, và CSP chặt (không <code>unsafe-inline</code>) làm lớp thứ hai. <code>httpOnly</code> chặn việc đánh cắp cookie nhưng không chặn việc script làm thay nạn nhân.&#34;</p>
+    </div>
+
+    <h4>Mối nối với các bài khác</h4>
+    <ul>
+      <li><strong>fs-01 (CSRF/CORS):</strong> bài đó nói cookie né được XSS đánh cắp nhưng rước CSRF; bài này cho thấy cookie <code>httpOnly</code> cũng không cứu được khi XSS đã xảy ra. Hai bài cùng vẽ ra đánh đổi cookie ↔ bộ nhớ.</li>
+      <li><strong>be-08 (JWT):</strong> thiết kế access token ngắn + refresh token trong cookie chính là để <em>giới hạn thiệt hại</em> khi một lớp thủng.</li>
+      <li><strong>fs-02 (SQL injection):</strong> cùng một lỗi &#34;trộn dữ liệu và lệnh&#34;, khác ở nơi bị đọc nhầm.</li>
+    </ul>
+  `,
+  followups: [
+    { q: 'React đã escape sẵn thì còn chỗ nào XSS lọt vào được?',
+      a: '<p>Bốn chỗ hay gặp, đều là lúc <strong>vòng qua</strong> cơ chế escape của React:</p><ul><li><code>dangerouslySetInnerHTML</code>, như ở đề xuất A.</li><li><strong><code>href</code> / <code>src</code> / <code>action</code> nhận URL do người dùng nhập</strong> (<code>javascript:</code>, <code>data:</code>). React không kiểm giúp.</li><li><strong>Gán trực tiếp qua ref</strong>: <code>ref.current.innerHTML = ...</code>, hoặc dùng thư viện bên thứ ba chèn HTML (trình soạn thảo, hiển thị markdown).</li><li><strong>Dữ liệu từ nguồn khác đưa thẳng vào</strong>: <code>eval</code>, <code>new Function</code>, hoặc server render HTML tự nối chuỗi (SSR).</li></ul><p>Quy tắc: thấy bốn dấu hiệu này thì dừng lại hỏi &#34;chuỗi này do ai viết?&#34;.</p>' },
+    { q: 'Sửa CSP thế nào để bỏ <code>unsafe-inline</code> mà Swagger vẫn chạy?',
+      a: '<p>Ba hướng, theo thứ tự khó dần:</p><ul><li><strong>Tách riêng</strong>: CSP chặt cho API thật, CSP nới chỉ cho đường <code>/docs</code> (Swagger). Phần lớn dự án dừng ở đây vì Swagger có thể tắt ở production.</li><li><strong>Nonce</strong>: mỗi lần phản hồi sinh một chuỗi ngẫu nhiên, đặt vào header (<code>script-src &#39;nonce-abc&#39;</code>) và vào thẻ <code>&lt;script nonce=&#34;abc&#34;&gt;</code>. Chỉ script có đúng nonce mới chạy; kẻ tấn công không đoán được nonce của lần này.</li><li><strong>Hash</strong>: khai báo mã băm của từng đoạn script inline đã biết.</li></ul><p>Điểm mấu chốt: <strong>CSP có giá trị thật ở trang FE</strong> (nơi người dùng chạy mã), không phải ở API JSON. Nên đặt nó ở lớp phục vụ file FE (nginx hoặc CDN).</p>' },
+    { q: 'DOMPurify làm gì, và có nên tự viết bộ lọc không?',
+      a: '<p>DOMPurify <strong>phân tích HTML thành cây</strong> rồi chỉ giữ lại thẻ và thuộc tính trong danh sách trắng, bỏ mọi thứ còn lại (<code>onerror</code>, <code>javascript:</code>…). Dùng đúng ở <em>chỗ hiển thị</em>: <code>__html: DOMPurify.sanitize(bio)</code>.</p><p>Không nên tự viết: HTML có quá nhiều cách mã hoá và quá nhiều quirk của trình duyệt (thẻ lồng sai, ký tự lạ, đa byte). Bộ lọc bằng regex luôn bị vượt qua, trong khi DOMPurify được cộng đồng soi và vá liên tục. Nếu chỉ cần in đậm/xuống dòng thì cách rẻ nhất vẫn là <strong>không cho HTML</strong>, dùng markdown rồi render qua thư viện đã sanitize.</p>' },
+    { q: 'XSS xảy ra rồi thì refresh token trong cookie <code>httpOnly</code> có cứu được gì không?',
+      a: '<p>Có, nhưng cứu <strong>một phần</strong>:</p><ul><li><strong>Cứu được</strong>: kẻ tấn công không mang được refresh token đi. Nó không dùng được trên máy của nó, và khi nạn nhân đóng tab hay đăng xuất thì quyền đó mất.</li><li><strong>Không cứu được</strong>: trong lúc tab còn mở, mã độc vẫn gọi API nhân danh nạn nhân (đổi thông tin, tạo đơn, rút tiền nếu API cho phép), và có thể gọi <code>/auth/refresh</code> để xin access token mới.</li></ul><p>Vì thế các hành động rủi ro cao (rút tiền, đổi mật khẩu) nên đòi <strong>xác thực lại</strong> (nhập mật khẩu / OTP), không dựa vào &#34;đã đăng nhập&#34;. Phòng thủ nhiều lớp: không để XSS xảy ra, nếu xảy ra thì hạn chế việc nó làm được.</p>' },
+  ],
+},
+
 /* ---------------------------------------------------------- KIẾN TRÚC */
 {
   id: 'kt-01',
