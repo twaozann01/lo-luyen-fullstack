@@ -4402,6 +4402,83 @@ Idempotency-Key: 8f3c1a9e-4b22-4d7e-9c10-5a6b7c8d9e0f
       a: '<p>Có, và nhận ra được ranh giới này là dấu hiệu của người đã cân nhắc thật chứ không áp dụng máy móc.</p><ul><li><strong>Thao tác vốn đã cộng dồn theo đúng ý người dùng.</strong> Nút "thêm 1 vào giỏ hàng" — bấm hai lần thì <em>nên</em> ra hai món. Gắn idempotency key vào đây là làm hỏng tính năng.</li><li><strong>Ghi log, gửi sự kiện phân tích.</strong> Trùng vài bản ghi không ai chết, mà chi phí chống trùng thì phải trả trên từng sự kiện — số lượng lớn hơn nghiệp vụ hàng nghìn lần.</li><li><strong>Thao tác thật sự là gán chứ không phải cộng.</strong> <code>PUT /profile { name: "An" }</code> vốn đã idempotent theo bản chất — ghi đè bao nhiêu lần cũng ra một kết quả. Thêm khoá vào là thừa.</li></ul><p>Quy tắc gọn: <strong>chỉ cần idempotency cho thao tác vừa có phản ứng phụ không đảo ngược được, vừa mang tính cộng dồn.</strong> Tiền bạc, gửi mail, tạo đơn, gọi ra hệ thống ngoài. Còn thao tác gán thì bản chất đã an toàn, và thao tác cộng dồn có chủ đích thì đừng đụng vào.</p>' },
   ],
 },
+{
+  id: 'be-10',
+  section: 'be',
+  topic: 'Hiệu năng truy vấn',
+  level: 'khó',
+  multi: true,
+  q: 'API <code>GET /repairmen?area=quan 7&amp;page=1&amp;limit=20</code> mất khoảng <strong>2 giây</strong>. Bảng <code>repairman_profiles</code> có ~200.000 dòng, ~150.000 là <code>VERIFIED</code>; model <strong>không có <code>@@index</code> nào</strong> ngoài khoá chính và <code>userId @unique</code>; Prisma <strong>5.22</strong>, không bật <code>relationLoadStrategy</code>. Nhận định nào <strong>đúng</strong>?',
+  code: `async list(query, canReviewAll) {
+  const where = canReviewAll ? {} : { verifyStatus: VERIFIED };
+  if (query.area)       where.area = { contains: query.area, mode: 'insensitive' };
+  if (query.categoryId) where.categories = { some: { id: query.categoryId } };
+
+  const [items, total] = await this.prisma.$transaction([
+    this.prisma.repairmanProfile.findMany({
+      where, ...getSkipTake(query), orderBy: ..., include: LIST_INCLUDE,
+    }),                                       // LIST_INCLUDE = user + categories
+    this.prisma.repairmanProfile.count({ where }),
+  ]);
+  return buildPaginated(
+    await Promise.all(items.map((i) =&gt; this.toListItem(i))),   // chỉ ký URL ảnh, KHÔNG chạm DB
+    total, query);
+}`,
+  options: [
+    { id: 'a', text: 'Đây là lỗi N+1 kinh điển: 20 dòng thợ thì sinh 1 + 20 truy vấn lấy <code>user</code> và thêm 20 truy vấn lấy <code>categories</code>' },
+    { id: 'b', text: '<code>include</code> của Prisma 5.22 <strong>không</strong> sinh truy vấn theo từng dòng: nó gom thành vài truy vấn <code>WHERE id IN (...)</code> cho cả 20 dòng, số truy vấn cố định dù 20 hay 200 dòng' },
+    { id: 'c', text: '<code>contains</code> + <code>mode: &#39;insensitive&#39;</code> thành <code>ILIKE &#39;%quan 7%&#39;</code>; dấu <code>%</code> đứng <strong>đầu</strong> nên index B-tree thông thường trên <code>area</code> không dùng được, Postgres vẫn quét cả bảng' },
+    { id: 'd', text: 'Thêm <code>@@index([area])</code> là đủ để <code>ILIKE &#39;%…%&#39;</code> chạy nhanh' },
+    { id: 'e', text: '<code>count({ where })</code> phải đếm theo cùng điều kiện lọc nên cũng tốn công quét: với offset pagination nó có thể đắt ngang <code>findMany</code>, không &#34;miễn phí&#34; chỉ vì trả về một con số' },
+    { id: 'f', text: 'Bọc <code>toListItem</code> trong <code>Promise.all</code> làm 20 truy vấn chạy song song nên không còn vấn đề N+1' },
+    { id: 'g', text: 'Phải đọc kế hoạch thực thi bằng <code>EXPLAIN ANALYZE</code> trên đúng câu SQL Prisma sinh ra (bật <code>log: [&#39;query&#39;]</code>) <strong>trước</strong> khi tối ưu; đoán rồi thêm index ngay là cách làm sai' },
+  ],
+  correct: ['b', 'c', 'e', 'g'],
+  why: `
+    <div class="script">
+      <p><strong>Chậm có hai loại, chữa bằng hai thứ khác nhau: chạy QUÁ NHIỀU lần (số truy vấn), và mỗi lần chạy QUÁ LÂU (một truy vấn quét quá nhiều dòng).</strong></p>
+      <p>Tối ưu mà chưa biết mình đang mắc loại nào thì chỉ là đoán mò.</p>
+    </div>
+
+    <h4>Đi chợ và tìm sách trong thư viện</h4>
+    <p><strong>N+1 là đi chợ.</strong> Cần 20 món. Cách dở là đi 21 chuyến: một chuyến lấy danh sách món, rồi mỗi món một chuyến riêng. Cách tử tế là đi một chuyến, đưa cả danh sách cho người bán và bảo &#34;lấy hết 20 món này&#34;. Bạn tốn công <em>đi lại</em> chứ không tốn công khuân hàng, và chi phí mỗi chuyến (kết nối, gửi lệnh, chờ phản hồi) cộng dồn theo số chuyến.</p>
+    <p><strong>Index là mục lục thư viện.</strong> Mục lục xếp sách theo chữ cái đầu. Tra &#34;Quận 7...&#34; thì nhảy thẳng tới đoạn chữ Q. Nhưng tra &#34;bất cứ sách nào <em>có chứa</em> chữ &#39;quan 7&#39; ở đâu đó trong tên&#34; thì mục lục vô dụng, vì sách có thể nằm ở mọi chỗ. Phải lật từng cuốn trên kệ.</p>
+
+    <h4>Chấm từng ý</h4>
+    <ul>
+      <li><strong>a. SAI.</strong> N+1 là khi <em>code của mình</em> lặp một truy vấn cho từng dòng. <code>include</code> của Prisma 5.22 làm khác: truy vấn 1 lấy 20 dòng <code>repairmanProfile</code>, rồi lấy <code>user</code> bằng một câu <code>IN (20 id)</code>, rồi lấy <code>categories</code> bằng một câu <code>IN</code> nữa. Khoảng 3–4 truy vấn, <strong>không đổi</strong> dù 20 hay 200 dòng. Cái tên &#34;N+1&#34; gợi sai vì Prisma đã tự đi chợ một chuyến.</li>
+      <li><strong>b. ĐÚNG.</strong> Đúng như trên. Để nói khi phỏng vấn: từ 5.8 Prisma có <code>relationLoadStrategy: &#39;join&#39;</code> (lúc đó còn là preview <code>relationJoins</code>) dùng một câu <code>JOIN</code> duy nhất; repo này dùng mặc định là <code>query</code> (kiểu <code>IN</code>).</li>
+      <li><strong>c. ĐÚNG — và là ý quan trọng nhất.</strong> Dấu <code>%</code> đứng đầu nghĩa là &#34;chữ cần tìm có thể ở bất cứ đâu&#34;, nên mục lục xếp theo chữ cái đầu không dùng được. Postgres đọc cả 200.000 dòng. Đây rất có thể là thủ phạm của 2 giây.</li>
+      <li><strong>d. SAI.</strong> Cái bẫy &#34;thêm index cho nhanh&#34;. <code>@@index([area])</code> tạo B-tree, mà B-tree vô dụng với <code>%</code> đứng đầu, nên truy vấn vẫn quét cả bảng. Muốn nhanh phải đổi <em>loại</em> index: extension <code>pg_trgm</code> + index <strong>GIN trigram</strong> (cắt chuỗi thành các mảnh 3 ký tự để tìm &#34;chứa&#34; được). Hoặc đổi bài toán: chuẩn hoá <code>area</code> thành bảng khu vực rồi lọc bằng <code>=</code>, thứ B-tree xử lý tốt. Index sai loại còn làm chậm ghi mà không được lợi gì.</li>
+      <li><strong>e. ĐÚNG.</strong> <code>count</code> phải áp dụng đúng <code>where</code>. Không có index thì <strong>nó quét cả bảng lần thứ hai</strong>: một trang danh sách chạy hai lần quét đắt, một lần lấy 20 dòng, một lần đếm tổng. Đây là nhược điểm của offset pagination, và là lý do cursor pagination bỏ được nhu cầu đếm.</li>
+      <li><strong>f. SAI.</strong> <code>Promise.all</code> chỉ chạy song song những việc <em>đã có sẵn</em>. Ở đây <code>toListItem</code> không gọi database nên không có N+1 để mà &#34;chữa&#34;. Và dùng nó để chạy 20 truy vấn song song cũng chỉ là N+1 chạy nhanh hơn: vẫn 21 chuyến đi chợ, chỉ là 20 người đi cùng lúc, lại còn làm cạn pool kết nối.</li>
+      <li><strong>g. ĐÚNG.</strong> Chưa đọc <code>EXPLAIN ANALYZE</code> thì mọi kết luận trên mới là giả thuyết. Dòng <code>Seq Scan on repairman_profiles</code> kèm <code>Rows Removed by Filter</code> cỡ 199.980 là bằng chứng cho c. Bật <code>log: [&#39;query&#39;]</code> để thấy Prisma thực sự sinh bao nhiêu câu SQL, nhờ đó chứng minh a sai và b đúng thay vì tin lời mình.</li>
+    </ul>
+
+    <div class="flag"><p>Có một lớp N+1 <strong>thật</strong> mà Prisma không cứu được: nếu <code>toListItem</code> tự gọi <code>this.prisma.user.findUnique(...)</code> cho từng dòng. Lỗi nằm ở <strong>tầng code ứng dụng</strong>, và sửa bằng cách đưa dữ liệu vào <code>include</code>/<code>select</code> ngay từ đầu, hoặc tự gom id rồi một <code>findMany({ where: { id: { in: ids } } })</code>, hoặc DataLoader. Xem câu hỏi phụ bên dưới.</p></div>
+
+    <div class="script">
+      <p><strong>Câu chốt khi phỏng vấn:</strong> &#34;Khi API chậm, em tách làm hai: <em>số truy vấn</em> và <em>thời gian mỗi truy vấn</em>. N+1 là lỗi về số lượng, chữa bằng cách gom lại (<code>include</code>/<code>IN</code>/DataLoader). <code>ILIKE &#39;%x%&#39;</code> là lỗi về chi phí mỗi lần, chữa bằng đúng loại index (trigram) chứ không phải B-tree. Em không đoán: em bật log query rồi <code>EXPLAIN ANALYZE</code> để thấy <code>Seq Scan</code> trước khi sửa.&#34;</p>
+    </div>
+
+    <h4>Mối nối với các bài khác</h4>
+    <ul>
+      <li><code>count</code> đắt nối vào bài <strong>offset vs cursor</strong> (be-03, be-04): cursor bỏ luôn việc đếm tổng.</li>
+      <li>Điều kiện <code>verifyStatus = VERIFIED</code> là ứng viên cho <strong>index từng phần</strong> (partial index), cùng họ &#34;đúng loại index cho đúng truy vấn&#34;.</li>
+    </ul>
+  `,
+  followups: [
+    { q: 'Prisma <code>include</code> (kiểu IN) khác <code>JOIN</code> thế nào, cái nào tốt hơn?',
+      a: '<p>Không có cái nào luôn tốt hơn; chúng đánh đổi <strong>số chuyến đi</strong> lấy <strong>lượng dữ liệu trên dây</strong>.</p><ul><li><strong><code>query</code> (mặc định, kiểu <code>IN</code>)</strong>: vài truy vấn nhỏ, mỗi bảng một lần. Không lặp dữ liệu cha, nhưng tốn thêm vài lượt đi về.</li><li><strong><code>join</code></strong>: một câu SQL <code>JOIN</code>. Ít lượt đi về, nhưng với quan hệ 1–nhiều thì <strong>dòng cha bị lặp theo số con</strong> (thợ có 5 kỹ năng thì dòng thợ xuất hiện 5 lần), và database phải gộp lại.</li></ul><p>Thực tế: đừng chọn theo cảm tính. Đo bằng <code>EXPLAIN ANALYZE</code> và thời gian thật trên dữ liệu cỡ production. Với danh sách 20 dòng, hai cách thường chênh nhau không đáng kể; cái đáng sợ là <em>N+1 thật</em> và <em>quét cả bảng</em>.</p>' },
+    { q: 'Vậy muốn tìm &#34;chứa&#34; nhanh thì làm cụ thể thế nào? Index trigram là gì?',
+      a: '<p>Ý tưởng: B-tree sắp xếp <em>cả chuỗi</em> nên chỉ giúp tìm theo <strong>đầu chuỗi</strong>. Trigram cắt mỗi chuỗi thành các mảnh 3 ký tự (<code>&#34;quan&#34;</code> → <code>qua</code>, <code>uan</code>) rồi đánh index theo mảnh. Tìm &#34;quan 7&#34; thì tìm các dòng chứa đủ những mảnh đó, rồi kiểm lại.</p><pre><code>CREATE EXTENSION IF NOT EXISTS pg_trgm;\nCREATE INDEX idx_repairman_area_trgm\n  ON repairman_profiles USING gin (area gin_trgm_ops);</code></pre><p>Tạo qua <strong>migration SQL</strong>: repo đã làm đúng như vậy với index GiST cho cột <code>location</code> (Prisma không quản loại index này tốt). Lưu ý: ILIKE hợp với trigram, còn <code>=</code> hay <code>LIKE &#39;quan%&#39;</code> (đầu chuỗi) thì B-tree vẫn rẻ hơn; và index luôn làm <strong>ghi chậm đi một chút</strong>.</p>' },
+    { q: 'Đọc <code>EXPLAIN ANALYZE</code> thì nhìn vào đâu?',
+      a: '<p>Ba chỗ, theo thứ tự:</p><ul><li><strong>Kiểu quét</strong>: <code>Seq Scan</code> (đọc cả bảng) hay <code>Index Scan</code>/<code>Bitmap Index Scan</code> (đi qua mục lục).</li><li><strong>Rows Removed by Filter</strong>: đọc 200.000 dòng, giữ 20, bỏ 199.980 là dấu hiệu rõ nhất của &#34;quét thừa&#34;.</li><li><strong>actual time</strong> của từng nút: nút nào chiếm phần lớn thời gian thì sửa nút đó, đừng sửa nút khác.</li></ul><p>Hai lưu ý: (1) chạy trên dữ liệu <strong>cỡ thật</strong>. Bảng 500 dòng thì Postgres chọn <code>Seq Scan</code> là đúng, đo ở đó rồi kết luận &#34;không cần index&#34; là sai. (2) <code>EXPLAIN ANALYZE</code> <strong>chạy thật</strong> câu lệnh, nên với <code>UPDATE</code>/<code>DELETE</code> phải bọc trong transaction rồi rollback.</p>' },
+    { q: 'Nếu <code>toListItem</code> gọi <code>prisma.user.findUnique</code> cho từng dòng thì lỗi ở lớp nào, sửa thế nào?',
+      a: '<p>Đây là N+1 thật, và nó nằm ở <strong>tầng code ứng dụng</strong>, không phải ở database hay Prisma: 1 truy vấn lấy 20 dòng + 20 truy vấn lẻ.</p><ol><li><strong>Nhờ ORM gom hộ</strong>: đưa dữ liệu cần vào <code>include</code>/<code>select</code> của <code>findMany</code> ngay từ đầu (<code>LIST_INCLUDE</code> đã có sẵn <code>user</code>).</li><li><strong>Tự gom</strong>: gom 20 id, gọi <strong>một</strong> <code>findMany({ where: { id: { in: ids } } })</code>, đưa vào một <code>Map</code> rồi tra theo id.</li><li><strong>DataLoader</strong> (hay gặp ở GraphQL): tự gom mọi lời gọi <code>load(id)</code> trong cùng một lượt vòng lặp sự kiện thành một truy vấn <code>IN</code>. Dùng khi lời gọi rải rác ở nhiều resolver, không gom thủ công được.</li></ol><p>Và đừng chữa bằng <code>Promise.all</code>: nó chỉ làm 20 chuyến đi chợ chạy cùng lúc.</p>' },
+  ],
+},
+
 /* ---------------------------------------------------------- FS */
 {
   id: 'fs-01',
