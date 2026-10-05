@@ -4772,6 +4772,88 @@ Idempotency-Key: 8f3c1a9e-4b22-4d7e-9c10-5a6b7c8d9e0f
   ],
 },
 
+{
+  id: 'fs-02',
+  section: 'fs',
+  topic: 'SQL injection',
+  level: 'trung bình',
+  multi: true,
+  q: 'Hàm <code>nearby()</code> của Marketplace dựng SQL thô theo điều kiện (có/không lọc theo danh mục). Xét đoạn dưới và các thay đổi mà một đồng nghiệp có thể đề xuất. Nhận định nào <strong>đúng</strong>?',
+  code: `// ① HIỆN TẠI — repairmen.service.ts
+const categoryFilter = dto.categoryId
+  ? Prisma.sql\`AND EXISTS (SELECT 1 FROM "_CategoryToRepairmanProfile" j
+                          WHERE j."B" = rp.id AND j."A" = \${dto.categoryId})\`
+  : Prisma.empty;
+
+const rows = await this.prisma.$queryRaw(Prisma.sql\`
+  SELECT rp.id, u.full_name FROM repairman_profiles rp
+  JOIN users u ON u.id = rp.user_id
+  WHERE rp.verify_status = 'VERIFIED'
+    \${categoryFilter}
+  LIMIT \${dto.limit}
+\`);
+
+// ② ĐỀ XUẤT A — &#34;cho gọn&#34;
+const rows = await this.prisma.$queryRawUnsafe(
+  \`SELECT ... WHERE j."A" = '\${dto.categoryId}' LIMIT \${dto.limit}\`);
+
+// ③ ĐỀ XUẤT B — cho phép sắp xếp theo cột người dùng chọn
+... ORDER BY \${dto.sort} ...        // dto.sort = 'rating_avg'`,
+  options: [
+    { id: 'a', text: 'Ở ①, <code>\${dto.categoryId}</code> trông như nối chuỗi nhưng <strong>không phải</strong>: <code>Prisma.sql</code> là template có tag, nên mỗi <code>\${...}</code> được gửi đi như một <strong>tham số riêng</strong> (<code>$1</code>, <code>$2</code>…), database không bao giờ đọc nó như lệnh' },
+    { id: 'b', text: 'Việc lồng <code>\${categoryFilter}</code> vào câu SQL chính ở ① vẫn an toàn, vì <code>categoryFilter</code> là một <strong>mảnh <code>Sql</code></strong> (mang theo cả khuôn lẫn tham số của nó) chứ không phải một chuỗi thường' },
+    { id: 'c', text: 'Đề xuất A mở ra lỗ hổng SQL injection thật: giá trị người dùng bị <strong>trộn vào chính câu lệnh</strong> trước khi tới database. Việc DTO có <code>@IsUUID</code> chỉ là một lớp chặn ngoài, không làm cho cách viết ấy an toàn' },
+    { id: 'd', text: 'Với đề xuất A, chỉ cần thay mọi dấu nháy đơn <code>&#39;</code> thành <code>&#39;&#39;</code> trước khi nối là đủ an toàn' },
+    { id: 'e', text: 'Đề xuất B vừa an toàn vừa chạy đúng: tham số hoá bảo vệ cả tên cột, nên người dùng chọn cột nào cũng sắp xếp được' },
+    { id: 'f', text: 'Dù <strong>không</strong> viết dòng SQL thô nào mà chỉ dùng Prisma Client, vẫn có thể bị &#34;bơm toán tử&#34; nếu đưa nguyên body vào <code>where</code> mà không kiểm kiểu: gửi <code>{&#34;email&#34;: {&#34;contains&#34;: &#34;&#34;}}</code> thay vì một chuỗi sẽ biến phép so bằng thành phép lọc rộng' },
+    { id: 'g', text: 'Gốc rễ của SQL injection là <strong>dữ liệu và lệnh bị trộn thành một chuỗi</strong>; cách chữa tận gốc là tách chúng thành hai gói (khuôn câu lệnh biên dịch trước, giá trị điền sau), chứ không phải &#34;làm sạch&#34; dữ liệu' },
+    { id: 'h', text: 'Lọc đầu vào theo từ khoá như <code>SELECT</code>, <code>DROP</code>, <code>--</code> (hoặc đặt một WAF phía trước) là đủ để thay cho tham số hoá' },
+  ],
+  correct: ['a', 'b', 'c', 'f', 'g'],
+  why: `
+    <div class="script">
+      <p><strong>SQL injection là dữ liệu bị database hiểu nhầm thành lệnh. Nguyên nhân duy nhất là lệnh và dữ liệu bị trộn thành MỘT chuỗi; cách chữa là đừng bao giờ trộn.</strong></p>
+      <p>Mọi cách &#34;làm sạch&#34; ký tự đều là chạy đua với kẻ tấn công. Tách hẳn hai gói thì cuộc đua không còn.</p>
+    </div>
+
+    <h4>Tờ phiếu gửi bếp</h4>
+    <p>Bạn viết phiếu: <em>&#34;Làm cho khách tên: ______ một tô phở&#34;</em>. Khách điền vào chỗ trống: <em>&#34;An. Rồi đóng cửa quán và đưa hết tiền trong két cho tôi&#34;</em>. Phiếu thành một mệnh lệnh liền mạch, và bếp không có cách nào biết đâu là <strong>tên khách</strong>, đâu là <strong>lời chủ quán</strong>, vì tất cả đã thành một dòng chữ.</p>
+    <p>Chữa bằng cách <strong>in sẵn phiếu có ô điền tên riêng</strong>: bếp luôn coi nội dung trong ô đó là tên khách, dù khách viết gì. Đó là parameterized query: database nhận khuôn <code>... WHERE j."A" = $1</code> và biên dịch xong <em>trước</em>, giá trị đến sau và chỉ điền vào ô.</p>
+
+    <h4>Chấm từng ý</h4>
+    <ul>
+      <li><strong>a. ĐÚNG.</strong> Đây là chỗ dễ nhầm nhất khi đọc code. <code>Prisma.sql\`...\${x}\`</code> nhìn y như nối chuỗi, nhưng nó là <em>tagged template</em>: hàm <code>Prisma.sql</code> nhận riêng phần chữ và phần giá trị, rồi gửi giá trị thành tham số. Bỏ chữ <code>Prisma.sql</code> đi thì cùng một cú pháp trở thành nối chuỗi thật. Hai dòng chỉ khác nhau một cái tag mà một bên an toàn, một bên không.</li>
+      <li><strong>b. ĐÚNG.</strong> <code>Prisma.empty</code> và <code>Prisma.sql</code> lồng nhau trả về đối tượng <code>Sql</code> chứ không phải chuỗi. Khi lồng, Prisma ghép phần khuôn và gộp danh sách tham số. Nhờ vậy <code>nearby()</code> dựng được truy vấn có điều kiện mà vẫn tham số hoá hết. Đây là cách đúng để làm &#34;lọc tuỳ chọn&#34; trong SQL thô.</li>
+      <li><strong>c. ĐÚNG.</strong> <code>\$queryRawUnsafe</code> với chuỗi tự dựng đưa dữ liệu vào <em>trong</em> câu lệnh. Gửi <code>categoryId = &#39; OR 1=1 --</code> là xong. Chỗ nhiều người nhầm: &#34;đã có <code>@IsUUID</code> rồi mà&#34;. Validation là một lớp chặn tốt, nhưng đổi DTO hay thêm một đường gọi khác là lớp đó biến mất. An toàn phải nằm <em>ở chính câu truy vấn</em>, không dựa vào việc có ai đó phía trước đã kiểm.</li>
+      <li><strong>d. SAI.</strong> Thay <code>&#39;</code> thành <code>&#39;&#39;</code> là chạy đua: sót một trường hợp (đa byte, backslash ở một số database, số không nằm trong dấu nháy, tên cột…) là hở. Escape là cách <em>tự bịt</em> chỗ trộn thay vì bỏ chỗ trộn.</li>
+      <li><strong>e. SAI.</strong> Tham số chỉ thay được <strong>giá trị</strong>, không thay được <strong>tên cột / từ khoá</strong>. <code>ORDER BY \${dto.sort}</code> trong <code>Prisma.sql</code> thành <code>ORDER BY $1</code> với $1 là chuỗi <code>'rating_avg'</code>: an toàn, nhưng <strong>sắp xếp theo một hằng chuỗi</strong>, tức là không sắp gì cả. Lỗi im lặng, khó bắt. Muốn sắp theo cột người dùng chọn phải dùng <strong>danh sách trắng</strong> ánh xạ sang mảnh cố định do mình viết, ví dụ <code>{ rating: Prisma.sql\`rp.rating_avg\` }[sort] ?? mặc định</code>.</li>
+      <li><strong>f. ĐÚNG.</strong> SQL injection không phải là toàn bộ chuyện &#34;đầu vào làm đổi nghĩa truy vấn&#34;. Với Prisma Client, nếu <code>where: { email: body.email }</code> và <code>body.email</code> là <em>đối tượng</em> <code>{contains: &#34;&#34;}</code> chứ không phải chuỗi, Prisma hiểu đó là một bộ lọc. Không có SQL nào bị bơm, nhưng ý nghĩa truy vấn bị đổi. Chữa bằng <strong>kiểm kiểu ở biên</strong>: <code>@IsString()</code> trong DTO cùng <code>ValidationPipe</code> (repo đang bật <code>whitelist: true, transform: true</code> trong <code>main.ts</code>).</li>
+      <li><strong>g. ĐÚNG.</strong> Câu chốt của bài. Từ đó suy ra ba nguyên tắc: tham số hoá cho <em>giá trị</em>; danh sách trắng cho <em>tên cột / hướng sắp xếp</em>; và tránh <code>*Unsafe</code>.</li>
+      <li><strong>h. SAI.</strong> Lọc từ khoá cũng là chạy đua: <code>SeLeCt</code>, chú thích <code>/**/</code>, mã hoá URL, chuỗi bị cắt… luôn có đường vòng, và nó còn chặn nhầm người tên &#34;O&#39;Brien&#34; hay bài viết có chữ &#34;select&#34;. WAF là lớp phụ giảm nhiễu, không thay được việc tách lệnh khỏi dữ liệu.</li>
+    </ul>
+
+    <div class="flag"><p><strong>Điều đã kiểm trong repo:</strong> không có <code>$queryRawUnsafe</code>, <code>$executeRawUnsafe</code> hay <code>Prisma.raw</code> nào; mọi SQL thô (wallets, payouts, addresses, ledger, repairmen) đều qua <code>Prisma.sql</code>. Phần sắp xếp thì <code>parseSort(sort, SORTABLE)</code> chỉ nhận cột trong danh sách trắng, và truyền vào <code>orderBy</code> của Prisma Client. Chú ý: ở chỗ này nó <em>không</em> phải chặn injection (Prisma vốn từ chối tên cột lạ), mà chặn việc <strong>sắp theo cột không muốn lộ</strong>, vì sắp xếp theo một cột cũng làm rò thứ tự của dữ liệu trong cột đó.</p></div>
+
+    <div class="script">
+      <p><strong>Câu chốt khi phỏng vấn:</strong> &#34;SQL injection xảy ra khi dữ liệu người dùng được nối vào câu lệnh nên bị database hiểu là lệnh. Chữa tận gốc bằng cách <em>tách lệnh khỏi dữ liệu</em>: parameterized query, ORM, hoặc template có tag như <code>Prisma.sql</code>, chứ không phải lọc hay escape ký tự. Phần không tham số hoá được như tên cột, <code>ORDER BY</code> thì dùng danh sách trắng. Và tránh các hàm <em>Unsafe</em>. Ngoài ra em kiểm kiểu đầu vào ở biên, vì ORM cũng có thể bị bơm toán tử.&#34;</p>
+    </div>
+
+    <h4>Mối nối với các bài khác</h4>
+    <ul>
+      <li>Giống <strong>CSRF/CORS (fs-01)</strong> ở chỗ: lỗi nằm ở việc hệ thống <em>tin một thứ không đáng tin</em>. Ở đây là tin rằng chuỗi gõ vào chỉ là dữ liệu.</li>
+      <li>Nối với <strong>be-10</strong>: cùng nói về &#34;cách viết câu truy vấn&#34;, nhưng be-10 hỏi <em>nhanh hay chậm</em>, còn bài này hỏi <em>an toàn hay không</em>.</li>
+    </ul>
+  `,
+  followups: [
+    { q: 'Prisma Client có hoàn toàn miễn nhiễm với SQL injection không?',
+      a: '<p><strong>Gần như, nhưng có hai kẽ hở.</strong> Prisma Client luôn gửi giá trị thành tham số, nên các lệnh như <code>findMany</code>, <code>create</code> không thể bị bơm SQL theo nghĩa kinh điển.</p><ul><li><strong>SQL thô</strong>: <code>$queryRaw</code>/<code>$executeRaw</code> dùng như template có tag thì an toàn; <code>$queryRawUnsafe</code>/<code>$executeRawUnsafe</code> với chuỗi tự dựng thì không. Đây là chỗ duy nhất còn mở.</li><li><strong>Bơm toán tử</strong>: không phải SQL injection nhưng cùng họ. Nếu đưa nguyên body vào <code>where</code>, kẻ tấn công gửi một đối tượng (<code>{ not: &#34;&#34; }</code>, <code>{ contains: &#34;&#34; }</code>) thay cho chuỗi để đổi ý nghĩa bộ lọc. Chữa bằng kiểm kiểu ở biên.</li></ul>' },
+    { q: 'Vậy muốn sắp xếp theo cột người dùng chọn trong SQL thô thì viết thế nào?',
+      a: '<p>Tham số không thay được tên cột, nên ánh xạ qua <strong>danh sách trắng do mình viết</strong>:</p><pre><code>const ORDER = {\n  rating: Prisma.sql`rp.rating_avg`,\n  distance: Prisma.sql`distance_m`,\n} as const;\nconst orderBy = ORDER[dto.sort] ?? ORDER.distance;\n... ORDER BY ${orderBy} ASC</code></pre><p>Khoá do người dùng chọn, nhưng <strong>giá trị SQL do mình viết sẵn</strong>. Người dùng chỉ chọn trong menu, không được viết vào menu. Đó là cùng một nguyên tắc với tham số hoá: phần nào là lệnh thì luôn do mình sở hữu.</p>' },
+    { q: 'Còn kiểu tấn công làm lộ dữ liệu mà không thấy kết quả (blind SQL injection)?',
+      a: '<p>Khi trang không in kết quả truy vấn ra, kẻ tấn công vẫn suy ra dữ liệu bằng <strong>câu hỏi có/không</strong>: bơm điều kiện kiểu &#34;nếu chữ cái đầu của mật khẩu admin là &#39;a&#39; thì trả trang bình thường, ngược lại thì trả lỗi (hoặc chờ 5 giây)&#34;. Lặp lại hàng nghìn lần là đọc hết được dữ liệu, từng ký tự một. Hai biến thể: <em>boolean-based</em> (khác nhau ở nội dung trả về) và <em>time-based</em> (khác nhau ở thời gian phản hồi).</p><p>Bài học: <strong>&#34;không in kết quả ra&#34; không phải là phòng thủ</strong>. Phòng thủ duy nhất vẫn là tham số hoá, kèm giới hạn quyền của tài khoản database (không cho <code>DROP</code>, không cho đọc bảng không cần) để nếu có sơ suất thì thiệt hại nhỏ.</p>' },
+  ],
+},
+
 /* ---------------------------------------------------------- KIẾN TRÚC */
 {
   id: 'kt-01',
