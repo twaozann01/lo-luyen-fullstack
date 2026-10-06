@@ -4553,6 +4553,85 @@ Idempotency-Key: 8f3c1a9e-4b22-4d7e-9c10-5a6b7c8d9e0f
   ],
 },
 
+{
+  id: 'be-12',
+  section: 'be',
+  topic: 'Rate limiting',
+  level: 'khó',
+  multi: true,
+  q: 'Backend Marketplace đang chạy <strong>1 instance</strong>, sắp scale lên <strong>2 instance</strong> sau một load balancer chia đều. Đồng thời có người báo: &#34;văn phòng 40 người dùng chung một IP công cộng, sáng thứ Hai đăng nhập bị chặn hàng loạt&#34;. Nhận định nào <strong>đúng</strong>?',
+  code: `// app.module.ts — toàn cục: 100 request / 60 giây / IP, storage MẶC ĐỊNH = in-memory
+ThrottlerModule.forRootAsync({ ... throttlers: [{ ttl: 60_000, limit: 100 }] })
+
+// auth.controller.ts
+const AUTH_THROTTLE     = { default: { limit: 5,  ttl: 60_000 } };  // đăng nhập: 5 lần/phút/IP
+const REGISTER_THROTTLE = { default: { limit: 10, ttl: 60_000 } };  // đăng ký: 10 lần/phút/IP
+
+// main.ts
+if (isProd) app.set(&#39;trust proxy&#39;, 1);   // chỉ bật ở production, đúng 1 lớp Nginx
+
+// common/guards/throttler.guard.ts
+if (context.getType() !== &#39;http&#39;) return true;   // WebSocket: cho qua`,
+  options: [
+    { id: 'a', text: 'Chạy 2 instance mà vẫn dùng storage in-memory thì mỗi instance <strong>đếm riêng</strong>, nên kẻ tấn công thực tế thử được khoảng <strong>10 lần/phút</strong> thay vì 5' },
+    { id: 'b', text: 'Giới hạn theo IP là đủ để chặn việc đoán mật khẩu một tài khoản, vì mỗi kẻ tấn công chỉ có một IP' },
+    { id: 'c', text: 'Giới hạn theo IP có thể <strong>chặn nhầm</strong> người dùng thật dùng chung IP (văn phòng, trường học, NAT di động); và nếu quên bật <code>trust proxy</code> khi đứng sau Nginx thì <strong>mọi người dùng</strong> rơi chung một thùng đếm' },
+    { id: 'd', text: 'Bộ đếm <strong>cửa sổ cố định</strong> có thể cho lọt gần <strong>gấp đôi</strong> giới hạn quanh ranh giới hai cửa sổ; cửa sổ trượt hoặc token bucket làm mượt chỗ này' },
+    { id: 'e', text: 'Thêm giới hạn <strong>theo tài khoản</strong> (khoá theo số điện thoại bị thử) bảo vệ được tài khoản trước kẻ tấn công dùng nhiều IP, nhưng mở ra đòn mới: kẻ xấu cố tình thử sai để <strong>khoá tài khoản của nạn nhân</strong>' },
+    { id: 'f', text: 'Đã có rate limiting thì có thể giảm độ khó băm mật khẩu (bcrypt) để đăng nhập nhanh hơn' },
+    { id: 'g', text: 'Khi vượt giới hạn nên trả <strong>HTTP 429</strong> kèm header <code>Retry-After</code> để client biết bao lâu nữa thử lại và biết lùi lại' },
+    { id: 'h', text: '<code>HttpThrottlerGuard</code> đang bảo vệ luôn cả các handler WebSocket (chat/tracking)' },
+  ],
+  correct: ['a', 'c', 'd', 'e', 'g'],
+  why: `
+    <div class="script">
+      <p><strong>Rate limiting là một bác bảo vệ cầm sổ đếm trước cửa. Mọi quyết định thiết kế quy về ba câu hỏi: ĐẾM Ở ĐÂU, ĐẾM AI, và ĐẾM THẾ NÀO / LÀM GÌ KHI VƯỢT.</strong></p>
+      <p>Đa số lỗi thực tế là trả lời sai một trong ba câu: sổ không chung giữa các instance, đếm theo IP trong khi mục tiêu là tài khoản, hoặc chặn cứng làm lợi cho kẻ phá.</p>
+    </div>
+
+    <h4>Bác bảo vệ đứng cửa</h4>
+    <p>Quán có luật &#34;mỗi người chỉ được thử vào 5 lần mỗi phút&#34;. Bác bảo vệ ghi vào sổ mỗi lần ai đó đến. Cả bài chỉ là: <em>sổ của bác nằm ở đâu</em> (ý a, h), <em>bác ghi tên ai</em> (ý b, c, e), và <em>bác đếm kiểu gì, rồi nói gì với người bị chặn</em> (ý d, f, g).</p>
+
+    <h4>Chấm từng ý</h4>
+    <ul>
+      <li><strong>a. ĐÚNG.</strong> Quán có hai cửa, mỗi cửa một bác và hai bác không nói chuyện với nhau. Kẻ xấu thử 5 lần ở cửa 1 rồi sang cửa 2 thử thêm 5 lần; cả hai bác đều thấy &#34;mới 5 lần&#34;. Storage mặc định của <code>@nestjs/throttler</code> (đã đọc <code>throttler.service.js</code> bản 6.5.0) là một <code>Map</code> trong RAM của process, nên 2 instance thì giới hạn thực tế nhân đôi. Comment trong <code>app.module.ts</code> đã tự ghi: đủ cho 1 instance, scale ngang cần storage Redis dùng chung.</li>
+      <li><strong>b. SAI.</strong> Kẻ tấn công thật dùng hàng nghìn IP. Thử mỗi mật khẩu từ một IP khác nhau, mỗi IP chỉ 1–2 lần, thấp hơn xa 5/phút nên không bao giờ bị chặn (tấn công phân tán, chậm và nhẹ; hoặc credential stuffing). Giới hạn theo IP trả lời &#34;IP này có spam không&#34;, không trả lời &#34;tài khoản này có đang bị tấn công không&#34;.</li>
+      <li><strong>c. ĐÚNG.</strong> IP không đồng nghĩa một người: 40 người trong một văn phòng chung một IP công cộng thì người thứ 6 trở đi bị chặn dù không làm gì sai. Bẫy thứ hai ở <code>main.ts</code>: đứng sau Nginx, IP nguồn của mọi request là IP của Nginx; không bật <code>trust proxy</code> thì cả hệ thống chung một thùng và một kẻ tấn công làm cạn hạn mức của tất cả. Bật thì đọc IP thật từ <code>X-Forwarded-For</code>, nhưng số <code>1</code> phải khớp đúng số lớp proxy, vì header này client tự đặt được; tin sai chỗ là kẻ tấn công giả IP để né giới hạn.</li>
+      <li><strong>d. ĐÚNG.</strong> Cửa sổ cố định chia thời gian thành các ô (0–60s, 60–120s), mỗi ô đếm từ 0. 5 request ở giây 59 rồi 5 request ở giây 61 là 10 request trong 2 giây mà không ô nào vượt. Cửa sổ trượt (đếm 60 giây gần nhất tính từ <em>bây giờ</em>) hoặc token bucket làm mượt. <strong>Lưu ý:</strong> ý này nói về thuật toán nói chung; bản 6.5.0 của throttler đặt một bộ hẹn giờ cho từng lần gọi để trừ lại sau <code>ttl</code>, nên gần với cửa sổ trượt, và comment &#34;cửa sổ trượt&#34; trong <code>security.config.ts</code> là đúng cho bản này.</li>
+      <li><strong>e. ĐÚNG.</strong> Khoá thêm một thùng theo số điện thoại thì dù 1000 IP lần lượt thử cùng một tài khoản, thùng của tài khoản vẫn đầy sau vài lần. Nhưng kẻ xấu biết số của bạn có thể chủ động thử sai để khoá tài khoản bạn. Cách giảm đau: không khoá cứng mà <strong>thêm ma sát</strong> (đợi lâu dần, CAPTCHA, OTP) và vẫn cho thiết bị quen đăng nhập.</li>
+      <li><strong>f. SAI.</strong> Hai thứ bảo vệ hai kịch bản khác nhau. Rate limiting chặn thử mật khẩu <em>qua cổng đăng nhập</em> (online). Băm chậm chặn khi kẻ tấn công đã lấy được bảng người dùng và thử hàng tỷ mật khẩu <em>trên máy riêng</em> (offline), lúc đó không còn cổng nào để giới hạn. Giảm độ khó băm là bỏ lớp thứ hai để đổi lấy tiện lợi.</li>
+      <li><strong>g. ĐÚNG.</strong> 429 là mã chuẩn, phân biệt với 401 (sai thông tin) và 403 (không có quyền). <code>Retry-After</code> cho client biết lùi bao lâu: app tử tế sẽ hiện &#34;thử lại sau 40 giây&#34; thay vì dồn dập gửi lại và làm tình hình tệ hơn.</li>
+      <li><strong>h. SAI.</strong> <code>HttpThrottlerGuard</code> có dòng <code>if (context.getType() !== &#39;http&#39;) return true</code>: gặp WebSocket thì cho qua, không đếm gì. Lý do: <code>ThrottlerGuard</code> gốc đọc request qua <code>switchToHttp()</code>, gặp Socket thì hỏng. Hệ quả: chat và tracking không có rate limit. Comment trong code đã ghi nhận đây là nợ kỹ thuật.</li>
+    </ul>
+
+    <h4>Câu phụ: Redis thì tăng bộ đếm thế nào cho đúng</h4>
+    <p>Cùng bệnh với be-11: &#34;đọc số hiện tại, cộng một, ghi lại&#34; là ba bước rời, hai request đồng thời đọc cùng số 4 rồi cùng ghi 5 thì đếm thiếu một. Chữa bằng <strong>một lệnh nguyên tử</strong>: <code>INCR</code> tăng và trả giá trị mới trong một bước. Hết hạn: nếu <code>INCR</code> trả <code>1</code> (lần đầu trong cửa sổ) thì mới <code>EXPIRE</code>. Chi tiết dễ sai: process chết <em>giữa</em> <code>INCR</code> và <code>EXPIRE</code> thì khoá sống mãi, nên thường gói cả hai vào một script Lua.</p>
+
+    <div class="flag"><p><strong>Điều đã đọc trong repo:</strong> global 100 request/60 giây/IP; <code>POST /auth/login</code> và <code>/auth/zalo</code> và <code>PATCH /auth/password</code> 5 lần/phút/IP; <code>/auth/register</code> 10 lần/phút/IP; <code>/auth/refresh</code> không có <code>@Throttle</code> riêng nên chịu hạn mức toàn cục; storage mặc định in-memory; <code>trust proxy</code> chỉ bật ở production. Mình <strong>chưa thử</strong> chạy hai instance để quan sát giới hạn nhân đôi; ý a là suy ra từ cách storage hoạt động.</p></div>
+
+    <div class="script">
+      <p><strong>Câu chốt khi phỏng vấn:</strong> &#34;Rate limiting trả lời ba câu: đếm ở đâu, đếm ai, đếm thế nào. Nhiều instance thì phải dùng bộ đếm chung (Redis, <code>INCR</code> nguyên tử), không thì giới hạn nhân lên theo số instance. Chỉ theo IP thì vừa chặn nhầm người dùng chung NAT vừa không cản được kẻ tấn công nhiều IP, nên kết hợp theo tài khoản, nhưng dùng ma sát tăng dần thay vì khoá cứng để tránh bị lợi dụng khoá tài khoản người khác. Vượt giới hạn trả 429 kèm Retry-After. Và nó không thay thế việc băm mật khẩu chậm.&#34;</p>
+    </div>
+
+    <h4>Mối nối với các bài khác</h4>
+    <ul>
+      <li><strong>be-11:</strong> cùng bệnh check-then-act; ở đây chữa bằng <code>INCR</code> nguyên tử.</li>
+      <li><strong>be-08 và fs-04:</strong> thiết kế xác thực cần rate limit làm hàng rào đầu tiên trước các lớp token.</li>
+      <li><strong>be-10:</strong> cùng ý &#34;đo trước khi tối ưu&#34;: chọn hạn mức nên dựa trên lưu lượng thật, không đoán.</li>
+    </ul>
+  `,
+  followups: [
+    { q: 'Fixed window, sliding window và token bucket khác nhau thế nào?',
+      a: '<ul><li><strong>Cửa sổ cố định</strong>: chia thời gian thành các ô, mỗi ô một bộ đếm. Rẻ nhất (một số nguyên mỗi khoá), nhưng cho lọt gần gấp đôi ở ranh giới hai ô.</li><li><strong>Cửa sổ trượt</strong>: đếm số request trong N giây gần nhất tính từ bây giờ. Chính xác, nhưng tốn bộ nhớ hơn vì phải nhớ thời điểm từng request (hoặc xấp xỉ bằng hai ô liền kề).</li><li><strong>Token bucket</strong>: xô chứa tối đa B token, nạp đều r token mỗi giây, mỗi request lấy một token. Cho phép <strong>bùng nổ có kiểm soát</strong> (xô đầy thì gửi liền B request) mà vẫn giữ tốc độ trung bình r. Hợp với API muốn dễ chịu với client gửi theo cụm.</li></ul><p>Chọn theo mục đích: chống brute-force thì cửa sổ trượt hoặc cố định đều ổn; bảo vệ tài nguyên đắt tiền thì token bucket mượt hơn.</p>' },
+    { q: 'Viết bộ đếm Redis đúng cho nhiều instance thế nào?',
+      a: '<p>Cửa sổ cố định, gói trong một script Lua để không có khoảng hở giữa đếm và hẹn hết hạn:</p><pre><code>local n = redis.call("INCR", KEYS[1])\nif n == 1 then\n  redis.call("EXPIRE", KEYS[1], ARGV[1])\nend\nreturn n</code></pre><p>Gọi bằng <code>EVAL</code>, <code>KEYS[1]</code> = khoá (ví dụ <code>rl:login:{ip}</code>), <code>ARGV[1]</code> = số giây của cửa sổ. Trả về lớn hơn giới hạn thì từ chối. Cửa sổ trượt dùng <em>sorted set</em>: mỗi request là một phần tử có điểm là thời gian, mỗi lần xoá phần tử cũ rồi đếm, cũng gói trong Lua. Thực tế thường dùng gói storage Redis có sẵn cho throttler (như <code>@nest-lab/throttler-storage-redis</code>) thay vì tự viết; mình chưa kiểm phiên bản nào tương thích với v6, nên cần đối chiếu trước khi dùng.</p>' },
+    { q: 'Rate limit cho WebSocket làm thế nào, vì guard hiện tại bỏ qua nó?',
+      a: '<p>Hai tầng, vì socket khác HTTP ở chỗ <strong>kết nối sống lâu và gửi được vô số tin nhắn</strong>:</p><ul><li><strong>Lúc bắt tay (handshake)</strong>: giới hạn số kết nối mới theo IP và theo người dùng, và đòi token hợp lệ ngay từ đầu. Chặn ở đây là rẻ nhất.</li><li><strong>Sau khi đã kết nối</strong>: đếm số tin nhắn trên mỗi kết nối (ví dụ 20 tin/giây); vượt thì bỏ tin, cảnh báo, và quá nhiều lần thì ngắt kết nối. Có thể tự viết một bộ đếm trong gateway hoặc dùng interceptor riêng cho <code>@SubscribeMessage</code>.</li></ul><p>Cũng nên giới hạn kích thước một tin và số phòng mỗi người được vào. Nếu không, một kết nối duy nhất vẫn đủ để làm nghẽn máy chủ dù mỗi request riêng lẻ trông vô hại.</p>' },
+    { q: '<code>trust proxy</code> hoạt động ra sao, tin sai thì hậu quả gì?',
+      a: '<p>Proxy (Nginx) khi chuyển tiếp request sẽ <strong>thêm IP của người gọi vào cuối</strong> header <code>X-Forwarded-For</code>. Ứng dụng muốn biết IP thật phải đọc header này, nhưng <strong>client cũng tự đặt được</strong> header đó từ trước, nên chỉ phần do proxy <em>của mình</em> thêm vào mới đáng tin.</p><ul><li><code>trust proxy: 1</code> nghĩa là &#34;tin đúng 1 lớp proxy từ cuối&#34;: lấy IP đứng thứ 1 tính từ phải sang.</li><li><strong>Quá ít</strong> (không bật): mọi request mang IP của Nginx, cả hệ thống chung một thùng đếm.</li><li><strong>Quá nhiều</strong> (tin cả header của client): kẻ tấn công gửi <code>X-Forwarded-For: 1.2.3.4</code> với IP khác mỗi lần, mỗi request một thùng mới, né hết giới hạn.</li></ul><p>Con số phải khớp <strong>đúng số lớp proxy thật</strong> của hạ tầng. Thêm một lớp CDN hay load balancer là phải sửa lại.</p>' },
+  ],
+},
+
 /* ---------------------------------------------------------- FS */
 {
   id: 'fs-01',
