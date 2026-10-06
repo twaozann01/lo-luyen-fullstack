@@ -5340,6 +5340,91 @@ res.cookie(&#39;refreshToken&#39;, token, {
       a: '<p>Có, và nó là câu hỏi hay vì chạm đúng điểm yếu thật của system design: <strong>nó là ảnh chụp, mà hệ thống thì động.</strong></p><p>Ba cách thường dùng, theo thứ tự công sức:</p><ul><li><strong>Vẽ bằng chữ, để trong repo</strong> — Mermaid hay PlantUML, sửa cùng pull request như sửa code. Chỉ riêng việc thoát khỏi mấy file ảnh trôi nổi trong Slack đã giải quyết được phân nửa vấn đề.</li><li><strong>Chia theo mức C4</strong> — mức bối cảnh và mức container đổi rất chậm nên hiếm khi sai; mức component đổi liên tục nên đừng vẽ, hoặc chấp nhận nó sẽ cũ.</li><li><strong>Sinh từ hiện trạng</strong> — dựng sơ đồ phụ thuộc từ service mesh hoặc từ tracing. Luôn đúng, nhưng chỉ cho biết <em>cái gì đang gọi cái gì</em>, không cho biết <em>ý đồ</em>.</li></ul><p>Và đây là chỗ hai tài liệu bù cho nhau: <strong>sơ đồ lỗi thời thì còn cứu được bằng cách vẽ lại từ hiện trạng, nhưng lý do đã mất thì không có cách nào lấy lại.</strong> Đó chính là lý do ADR đáng công hơn sơ đồ, dù trông kém long lanh hơn nhiều.</p>' },
   ],
 },
+
+{
+  id: 'kt-02',
+  section: 'kt',
+  topic: 'Đồng bộ vs bất đồng bộ',
+  level: 'khó',
+  multi: true,
+  q: 'Marketplace xuất báo cáo Excel (tới 50.000 dòng) bằng <strong>hàng đợi BullMQ</strong>: API trả <code>202</code> kèm <code>jobId</code>, một worker chạy nền sinh file. Đọc <code>createExport()</code> và <code>ExportProcessor</code> rồi chọn nhận định <strong>đúng</strong>.',
+  code: `// reports.service.ts — createExport()
+const running = await prisma.exportJob.count({            // chặn: mỗi user 1 job đang chạy
+  where: { requestedById: userId, status: { in: [PENDING, PROCESSING] } } });
+if (running &gt; 0) throw new ConflictException(&#39;EXPORT_IN_PROGRESS&#39;);
+
+const job = await prisma.exportJob.create({ data: { ... } });        // ① ghi Postgres: PENDING
+await this.queue.add(&#39;generate&#39;, { jobId: job.id },                  // ② ghi Redis (BullMQ)
+  { attempts: 3, backoff: { type: &#39;exponential&#39;, delay: 2000 } });
+return { jobId: job.id, status: job.status };                        // 202
+
+// export.processor.ts — worker
+const key = &#96;exports/\${jobId}.xlsx&#96;;                  // khoá cố định theo jobId
+await storage.putObject(key, buffer, ...);                // ghi file
+await prisma.exportJob.update({ where: { id: jobId }, data: { status: DONE, resultKey: key } });`,
+  options: [
+    { id: 'a', text: 'Trả <code>202</code> + <code>jobId</code> thay vì chờ file xong là vì việc nặng sẽ <strong>giữ chặt request HTTP</strong>; tách người gọi khỏi việc nặng, đổi lại client phải <strong>hỏi lại trạng thái</strong> bằng <code>jobId</code>' },
+    { id: 'b', text: 'Với bài toán này nên dùng <strong>Kafka</strong> thay BullMQ, vì Kafka mạnh hơn nên chắc chắn đúng hơn' },
+    { id: 'c', text: 'Vì có <code>attempts: 3</code> và job treo có thể bị chạy lại, <code>process()</code> phải <strong>chịu được chạy hai lần</strong>; ở đây an toàn là nhờ khoá file cố định theo <code>jobId</code> nên lần chạy lại chỉ <strong>ghi đè cùng một file</strong>' },
+    { id: 'd', text: 'Giữa bước ① (ghi Postgres) và ② (ghi Redis) có <strong>khe hở</strong>: nếu tiến trình chết đúng lúc đó, dòng <code>PENDING</code> nằm đó mãi không ai xử lý, và vì <code>PENDING</code> được tính là &#34;đang chạy&#34; nên <strong>user bị chặn xuất báo cáo vĩnh viễn</strong>' },
+    { id: 'e', text: 'Nếu <code>queue.add</code> thất bại thì bản ghi <code>exportJob</code> ở bước ① tự được hoàn tác, vì hai lệnh nằm cùng một giao dịch' },
+    { id: 'f', text: 'Việc tự nghiệm thu đơn quá hạn dùng BullMQ <code>repeat</code> với <code>jobId</code> cố định thay vì cron trong tiến trình, vì cron chạy trên <strong>mọi instance</strong> nên cùng một đơn bị xử nhiều lần, còn hàng đợi thì mỗi lượt chỉ <strong>một worker</strong> nhận' },
+    { id: 'g', text: 'Bất đồng bộ luôn tốt hơn đồng bộ vì nó nhanh hơn, nên mọi thao tác trong hệ thống nên đẩy qua hàng đợi' },
+    { id: 'h', text: 'Khi người dùng cần kết quả <strong>ngay</strong> để làm bước kế tiếp (ví dụ kiểm số dư rồi mới trừ tiền) thì nên làm <strong>đồng bộ trong một transaction</strong>, không đẩy qua hàng đợi' },
+  ],
+  correct: ['a', 'c', 'd', 'f', 'h'],
+  why: `
+    <div class="script">
+      <p><strong>Bất đồng bộ không làm việc nhanh hơn: nó chỉ đổi chỗ đứng chờ. Và để đổi lấy việc không phải đứng chờ, bạn phải trả ba món nợ: một cái SỐ PHIẾU để hỏi lại, việc xử lý CHẠY TRÙNG, và việc xử lý MẤT GIỮA CHỪNG.</strong></p>
+      <p>Cả bài là ba món nợ đó, nhìn vào code thật của Marketplace.</p>
+    </div>
+
+    <h4>Gọi điện giữ máy hay đặt phiếu rồi đi</h4>
+    <p><strong>Đồng bộ</strong> giống gọi điện đặt món và <em>giữ máy chờ</em> bếp nấu xong: biết kết quả ngay, nhưng bạn kẹt đường dây suốt thời gian đó, và bếp chậm thì bạn chậm theo.</p>
+    <p><strong>Bất đồng bộ</strong> giống đặt phiếu ở quầy: bạn nhận <em>số phiếu</em> rồi đi làm việc khác, lát quay lại hỏi &#34;phiếu 47 xong chưa&#34;. Nhẹ cho bạn, nhưng giờ có ba chuyện phải lo:</p>
+    <ul>
+      <li><strong>Nợ 1, số phiếu:</strong> phải có chỗ lưu trạng thái để hỏi lại (<code>ExportJob</code>, <code>jobId</code>, API <code>getJob</code>).</li>
+      <li><strong>Nợ 2, chạy trùng:</strong> phiếu có thể bị bếp nấu hai lần (thử lại, treo rồi chạy lại). Phải chịu được (nối be-09, idempotency).</li>
+      <li><strong>Nợ 3, mất giữa chừng:</strong> phiếu được ghi ở <em>hai nơi</em> (sổ ở quầy, và tờ gửi bếp). Chết giữa hai lần ghi thì hai nơi lệch nhau.</li>
+    </ul>
+
+    <h4>Chấm từng ý</h4>
+    <ul>
+      <li><strong>a. ĐÚNG.</strong> Xuất tới 50.000 dòng có thể tốn nhiều giây đến hàng chục giây. Làm đồng bộ thì request giữ kết nối và một luồng của server suốt thời gian đó, còn trình duyệt và proxy có thể hết thời gian chờ. Trả <code>202 Accepted</code> nghĩa là &#34;đã nhận việc, chưa làm xong&#34;. Cái giá: client phải hỏi lại (<code>getJob</code>) hoặc được báo qua kênh khác (WebSocket).</li>
+      <li><strong>b. SAI.</strong> &#34;Mạnh hơn&#34; không có nghĩa đúng hơn. Kafka sinh ra cho dòng sự kiện khối lượng lớn, đọc lại được, nhiều bên cùng đọc. Một việc nền &#34;sinh file rồi báo xong&#34; là bài toán hàng đợi công việc, và BullMQ trên Redis sẵn có đã đủ, không thêm hạ tầng nào. Chọn công cụ lớn hơn nhu cầu là tự mua thêm việc vận hành.</li>
+      <li><strong>c. ĐÚNG.</strong> BullMQ thử lại theo <code>attempts</code>, và một job mà worker chết giữa chừng sẽ bị coi là &#34;treo&#34; rồi giao lại. Tức là giao <strong>ít nhất một lần</strong> chứ không phải đúng một lần. Ở đây an toàn vì key là <code>exports/\${jobId}.xlsx</code> cố định: chạy lại chỉ ghi đè cùng một file. Nếu key chứa thời gian hay số ngẫu nhiên thì mỗi lần thử lại đẻ ra một file mồ côi.</li>
+      <li><strong>d. ĐÚNG.</strong> Đây là &#34;ghi hai nơi&#34; (dual write): Postgres ở bước ①, Redis ở bước ②, không cùng một giao dịch. Chết đúng giữa hai bước thì có dòng <code>PENDING</code> mà không có job nào trong hàng đợi. Mình đã tìm trong repo: <code>ExportJobStatus.PENDING</code> chỉ xuất hiện đúng ở câu kiểm &#34;đang chạy&#34; này, <strong>không có bộ quét nào</strong> dọn hay đưa lại các dòng <code>PENDING</code> cũ. Hậu quả: người dùng đó mãi nhận <code>EXPORT_IN_PROGRESS</code>. Cách chữa: <em>outbox</em> hoặc một bộ quét định kỳ đưa lại các dòng <code>PENDING</code> quá cũ; hoặc đặt <code>jobId</code> của BullMQ bằng đúng id dòng DB để thêm lại không bị trùng.</li>
+      <li><strong>e. SAI.</strong> Postgres và Redis là hai hệ thống khác nhau, giao dịch Prisma không bao được Redis. Đó chính là lý do khe hở ở d tồn tại. Không có gì tự hoàn tác. Hơn nữa, ở code hiện tại <code>create</code> và <code>queue.add</code> cũng không nằm trong <code>$transaction</code> nào.</li>
+      <li><strong>f. ĐÚNG.</strong> Cron trong tiến trình chạy trên <em>mọi</em> instance: 2 instance thì mỗi giờ chạy 2 lần cùng một việc. <code>orders-review.worker.ts</code> dùng <code>repeat</code> với <code>jobId: JOB_NAME</code> cố định, nên nhiều instance cùng khởi động cũng chỉ tạo <strong>một</strong> lịch; và mỗi lượt chỉ <strong>một worker</strong> nhận. Tác giả đã ghi đúng điều này trong comment. Cũng có nghĩa là hàng đợi ở đây đóng vai &#34;bộ điều phối chỉ một người làm&#34;, không chỉ là chỗ để việc nặng.</li>
+      <li><strong>g. SAI.</strong> Tổng công việc không đổi, thậm chí tăng (thêm lưu trạng thái, thử lại, theo dõi). Bất đồng bộ chỉ thắng khi việc <em>nặng</em>, <em>chậm</em>, <em>hay lỗi</em>, hoặc cần <em>tách</em> hai bên. Với việc nhẹ và cần kết quả ngay, nó chỉ thêm ba món nợ mà không được gì.</li>
+      <li><strong>h. ĐÚNG.</strong> Kiểm số dư rồi trừ tiền phải thấy nhau ngay và hoàn tác cùng nhau, nên cần <strong>một transaction đồng bộ</strong> (như be-06). Đẩy qua hàng đợi thì giữa lúc kiểm và lúc trừ, số dư có thể đã đổi. Quy tắc nhớ: <strong>cần đúng ngay thì đồng bộ, chịu được trễ thì bất đồng bộ</strong>.</li>
+    </ul>
+
+    <div class="flag"><p><strong>Điều đã đọc trong repo:</strong> <code>createExport()</code> kiểm <code>count</code> rồi <code>create</code> rồi <code>queue.add</code> (<code>attempts: 3</code>, backoff mũ, cơ sở 2 giây); worker ghi <code>exports/{jobId}.xlsx</code> rồi cập nhật <code>DONE</code>, lỗi thì ghi <code>FAILED</code> và ném lại để BullMQ thử lại; không có chỗ nào quét <code>PENDING</code> cũ. Mình <strong>chưa chạy thử</strong> kịch bản chết giữa ① và ②; ý d là suy ra từ code, và sẽ thấy rõ nếu giả lập bằng cách tắt Redis ngay sau <code>create</code>.</p></div>
+
+    <div class="script">
+      <p><strong>Câu chốt khi phỏng vấn:</strong> &#34;Em đưa việc nặng sang bất đồng bộ để request không phải chờ, nhưng em biết mình đã trả ba món nợ: cần số phiếu để hỏi lại trạng thái, worker phải idempotent vì hàng đợi giao ít nhất một lần, và ghi hai nơi (DB và hàng đợi) thì phải có outbox hoặc bộ quét để không lệch. Việc cần đúng ngay như trừ tiền thì em giữ đồng bộ trong một transaction. Em chọn BullMQ vì đã có Redis; Kafka chỉ khi cần dòng sự kiện lớn hoặc nhiều bên đọc lại lịch sử.&#34;</p>
+    </div>
+
+    <h4>Mối nối với các bài khác</h4>
+    <ul>
+      <li><strong>be-09 (idempotency):</strong> nợ 2 chính là bài đó, áp lên worker.</li>
+      <li><strong>be-06 (transaction):</strong> ý h: khi nào phải giữ đồng bộ trong một giao dịch.</li>
+      <li><strong>be-11, be-12:</strong> cùng họ &#34;kiểm rồi mới làm&#34; (check-then-act) bị tranh chấp; ở đây là khe hở giữa hai lần ghi.</li>
+      <li><strong>kt-01 (ADR):</strong> chọn đồng bộ hay bất đồng bộ, BullMQ hay Kafka, là đúng loại quyết định đáng viết ADR.</li>
+    </ul>
+  `,
+  followups: [
+    { q: 'Kafka và RabbitMQ khác BullMQ ở đâu, khi nào đáng chuyển?',
+      a: '<p>Ba cái cùng giải bài toán &#34;tách người gửi khỏi người nhận&#34; nhưng ở ba tầm:</p><ul><li><strong>BullMQ</strong>: hàng đợi việc chạy trên Redis, nằm trong hệ sinh thái Node. Rẻ nhất vì dùng Redis có sẵn, nhưng độ bền phụ thuộc cấu hình Redis (persistence).</li><li><strong>RabbitMQ</strong>: broker riêng, mạnh về <em>định tuyến</em> và nhiều ngôn ngữ; tin xử lý xong thì bỏ.</li><li><strong>Kafka</strong>: nhật ký chỉ ghi thêm; tin giữ lại theo thời hạn, nhiều nhóm đọc có offset riêng, phát lại được; thông lượng rất cao, vận hành nặng hơn.</li></ul><p>Đáng chuyển khi gặp một trong các dấu hiệu: cần <strong>nhiều dịch vụ cùng đọc một dòng sự kiện</strong>, cần <strong>phát lại lịch sử</strong>, thông lượng vượt sức một Redis, hoặc cần độ bền mà Redis không cho. Chưa có dấu hiệu nào thì ở lại với BullMQ.</p>' },
+    { q: 'Outbox pattern giải khe hở ghi hai nơi thế nào?',
+      a: '<p>Ý tưởng: đừng ghi hai nơi, hãy <strong>ghi một nơi, rồi để một tiến trình khác chuyển tiếp</strong>. Trong <em>cùng một giao dịch Postgres</em>, ghi cả dữ liệu lẫn một dòng vào bảng <code>outbox</code> (&#34;cần đưa job này vào hàng đợi&#34;). Hai thứ cùng thành công hoặc cùng thất bại.</p><p>Một tiến trình nền (relay) liên tục đọc các dòng <code>outbox</code> chưa gửi, đưa vào hàng đợi, rồi đánh dấu đã gửi. Chết giữa chừng thì lần sau gửi lại, nên phía nhận phải idempotent (chính là nợ 2).</p><p>Với <code>ExportJob</code> thì bảng chính nó đã đóng vai outbox: dòng <code>PENDING</code> là &#34;việc chưa gửi&#34;. Thiếu mỗi <strong>bộ quét</strong> định kỳ đưa lại các dòng <code>PENDING</code> quá cũ (ví dụ quá 2 phút) vào hàng đợi, với <code>jobId</code> của BullMQ đặt bằng id dòng để thêm lại không đẻ ra bản sao.</p>' },
+    { q: 'Retry và dead-letter: <code>attempts: 3</code> với backoff mũ nghĩa là gì?',
+      a: '<p>Job lỗi thì BullMQ thử lại tối đa 3 lần, chờ lâu dần: khoảng 2 giây, rồi 4 giây (gấp đôi mỗi lần). Chờ lâu dần để cho thứ đang hỏng (database, mạng) có thời gian hồi phục, thay vì dồn dập thử lại làm nó chết hẳn.</p><p>Hết lần thử mà vẫn lỗi thì job vào trạng thái <strong>failed</strong> và nằm đó (<code>removeOnFail: 100</code> giữ 100 job lỗi gần nhất) để người vận hành xem. Đây là vai trò của <em>dead-letter</em>: chỗ cất những việc xử lý mãi không được (<em>poison message</em>) để chúng không chặn các việc khác. Ở RabbitMQ có dead-letter exchange riêng, ở BullMQ là tập failed.</p><p>Hai lưu ý: chỉ nên thử lại <strong>lỗi tạm thời</strong> (mạng, hết thời gian chờ), không nên thử lại lỗi chắc chắn (dữ liệu sai); và phải có <strong>cảnh báo</strong> khi tập failed phình ra, nếu không việc lỗi nằm im không ai biết.</p>' },
+    { q: 'Làm sao chống người dùng dồn quá nhiều job (backpressure)?',
+      a: '<p>Repo đã có một lớp: mỗi user chỉ <strong>một job đang chạy</strong> (câu <code>count</code> ở đầu <code>createExport</code>). Nhưng lớp này tự nó là check-then-act (hai request đồng thời cùng qua được), nên nếu cần chặt thì cho một ràng buộc duy nhất ở database hoặc khoá ngắn hạn.</p><p>Các lớp khác thường dùng: <strong>giới hạn tốc độ</strong> ở API (be-12); <strong>độ song song của worker</strong> (BullMQ mặc định xử lý một job một lúc cho mỗi worker, tăng bằng <code>concurrency</code>); <strong>trần kích thước việc</strong> như <code>MAX_ROWS = 50000</code>; và <strong>độ dài hàng đợi</strong>: quá dài thì từ chối nhận thêm hoặc báo người dùng chờ. Mục tiêu chung: hàng đợi hấp thụ được cơn đột biến, nhưng không để nó phình vô hạn.</p>' },
+  ],
+},
 ];
 
 /* ============================================================
